@@ -59,6 +59,7 @@ export default function RootLayout() {
         <Stack.Screen name="beer/add" options={{ presentation: 'modal' }} />
         <Stack.Screen name="group/[id]" />
         <Stack.Screen name="group/create" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="user/[id]" />
       </Stack>
     </AuthProvider>
   );

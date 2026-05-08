@@ -260,6 +260,15 @@ export default function SocialScreen() {
                   <Text style={styles.friendBio} numberOfLines={1}>{item.profile.bio}</Text>
                 )}
               </View>
+              <Pressable
+                style={styles.viewCellarBtn}
+                onPress={() => {
+                  const otherId = item.requester_id === session?.user.id ? item.addressee_id : item.requester_id;
+                  router.push(`/user/${otherId}`);
+                }}
+              >
+                <Ionicons name="wine-outline" size={16} color={Colors.primary} />
+              </Pressable>
               <Pressable onPress={() => removeFriend(item.id, item.profile?.username ?? '')}>
                 <Ionicons name="person-remove-outline" size={20} color={Colors.textDim} />
               </Pressable>
@@ -383,6 +392,11 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1, borderBottomColor: Colors.border,
   },
   friendInfo: { flex: 1 },
+  viewCellarBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
   friendName: { fontSize: 15, fontWeight: '600', color: Colors.text },
   friendBio: { fontSize: 12, color: Colors.textMuted, marginTop: 2 },
   groupCard: {

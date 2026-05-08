@@ -9,16 +9,17 @@ import StarRating from './StarRating';
 
 type Props = {
   entry: CellarEntry;
+  readonly?: boolean;
 };
 
-export default function BeerCard({ entry }: Props) {
+export default function BeerCard({ entry, readonly = false }: Props) {
   const router = useRouter();
   const beer = entry.beer;
 
   return (
     <Pressable
-      style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => router.push(`/beer/${entry.id}`)}
+      style={({ pressed }) => [styles.card, pressed && !readonly && styles.cardPressed]}
+      onPress={() => !readonly && router.push(`/beer/${entry.id}`)}
     >
       <View style={styles.imageContainer}>
         {entry.photo_url || beer?.image_url ? (

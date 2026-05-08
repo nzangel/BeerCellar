@@ -29,9 +29,10 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.beercellar.app",
       "permissions": [
-        "CAMERA",
-        "READ_EXTERNAL_STORAGE",
-        "WRITE_EXTERNAL_STORAGE"
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO"
       ]
     },
     "web": {
@@ -55,6 +56,13 @@
     "scheme": "beercellar",
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "9912b827-141c-4c0b-9fb7-22be5caa0ba1"
+      }
+    },
+    "owner": "nzangel"
   }
 }

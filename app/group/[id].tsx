@@ -95,6 +95,20 @@ export default function GroupScreen() {
     );
   };
 
+  const deleteSession = (sessionId: string, title: string) => {
+    Alert.alert('Supprimer la session', `Supprimer "${title}" ?`, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Supprimer',
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.from('group_sessions').delete().eq('id', sessionId);
+          fetchAll();
+        },
+      },
+    ]);
+  };
+
   const leaveGroup = () => {
     Alert.alert('Quitter le groupe', `Quitter "${group?.name}" ?`, [
       { text: 'Annuler', style: 'cancel' },
@@ -176,6 +190,11 @@ export default function GroupScreen() {
                   <Text style={styles.sessionDesc} numberOfLines={2}>{item.description}</Text>
                 )}
               </View>
+              {isAdmin && (
+                <Pressable onPress={() => deleteSession(item.id, item.title)} style={styles.deleteBtn}>
+                  <Ionicons name="trash-outline" size={18} color={Colors.error} />
+                </Pressable>
+              )}
             </View>
           )}
           ListHeaderComponent={
@@ -209,6 +228,12 @@ export default function GroupScreen() {
                   </View>
                 )}
               </View>
+              <Pressable
+                style={styles.viewCellarBtn}
+                onPress={() => router.push(`/user/${item.user_id}`)}
+              >
+                <Ionicons name="wine-outline" size={18} color={Colors.primary} />
+              </Pressable>
             </View>
           )}
           ListHeaderComponent={
@@ -275,6 +300,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 2,
   },
   adminBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.background },
+  deleteBtn: {
+    width: 34, height: 34, borderRadius: 17,
+    backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  viewCellarBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
   empty: { alignItems: 'center', gap: 12, marginTop: 40 },
   emptyText: { color: Colors.textMuted, fontSize: 14 },
 });

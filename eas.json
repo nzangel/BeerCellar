@@ -19,8 +19,7 @@
     },
     "production": {
       "android": {
-        "buildType": "app-bundle",
-        "releaseStatus": "draft"
+        "buildType": "app-bundle"
       }
     }
   },
@@ -28,7 +27,8 @@
     "production": {
       "android": {
         "serviceAccountKeyPath": "./google-service-account.json",
-        "track": "internal"
+        "track": "internal",
+        "releaseStatus": "draft"
       }
     }
   }

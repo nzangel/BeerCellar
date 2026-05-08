@@ -21,6 +21,16 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [emailNotConfirmed, setEmailNotConfirmed] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendSuccess, setResendSuccess] = useState(false);
+
+  const handleResendEmail = async () => {
+    setResendLoading(true);
+    const { error } = await supabase.auth.resend({ type: 'signup', email });
+    setResendLoading(false);
+    if (!error) setResendSuccess(true);
+  };
 
   const handleLogin = async () => {
     if (!email || !password) {
@@ -29,11 +39,13 @@ export default function LoginScreen() {
     }
     setLoading(true);
     setError('');
+    setEmailNotConfirmed(false);
+    setResendSuccess(false);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
       if (error.message.includes('Email not confirmed')) {
-        setError('Vérifie ta boîte mail et clique sur le lien de confirmation avant de te connecter.');
+        setEmailNotConfirmed(true);
       } else {
         setError('Email ou mot de passe incorrect.');
       }
@@ -86,6 +98,27 @@ export default function LoginScreen() {
             </Pressable>
           </View>
 
+          {emailNotConfirmed && (
+            <View style={styles.confirmBanner}>
+              <Ionicons name="mail-outline" size={22} color={Colors.primary} />
+              <View style={styles.confirmBannerText}>
+                <Text style={styles.confirmBannerTitle}>Email non confirmé</Text>
+                <Text style={styles.confirmBannerBody}>
+                  Vérifie ta boîte mail et clique sur le lien de confirmation avant de te connecter.
+                </Text>
+              </View>
+              <Pressable
+                style={[styles.resendBtn, resendSuccess && styles.resendBtnDone]}
+                onPress={handleResendEmail}
+                disabled={resendLoading || resendSuccess}
+              >
+                <Text style={styles.resendBtnText}>
+                  {resendLoading ? '...' : resendSuccess ? '✓ Envoyé' : 'Renvoyer'}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
           <Pressable
@@ -135,6 +168,28 @@ const styles = StyleSheet.create({
   passwordInput: { paddingRight: 48 },
   eyeBtn: { position: 'absolute', right: 14, top: 14 },
   errorText: { color: Colors.error, fontSize: 13, textAlign: 'center' },
+  confirmBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.primary,
+    padding: 14,
+  },
+  confirmBannerText: { flex: 1, gap: 4 },
+  confirmBannerTitle: { color: Colors.primary, fontWeight: '700', fontSize: 14 },
+  confirmBannerBody: { color: Colors.textMuted, fontSize: 13, lineHeight: 18 },
+  resendBtn: {
+    backgroundColor: Colors.primary,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    alignSelf: 'flex-start',
+  },
+  resendBtnDone: { backgroundColor: Colors.success },
+  resendBtnText: { color: Colors.background, fontSize: 12, fontWeight: '700' },
   btnPrimary: {
     backgroundColor: Colors.primary,
     borderRadius: 12,

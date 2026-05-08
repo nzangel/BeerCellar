@@ -2,7 +2,8 @@ import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '../../lib/storage';
 import { Image } from 'expo-image';
-import React, { useState } from 'react';
+import { useFocusEffect } from 'expo-router';
+import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -28,7 +29,26 @@ export default function ProfileScreen() {
   const [saving, setSaving] = useState(false);
   const [avatarUri, setAvatarUri] = useState<string | null>(null);
 
-  const stats = { beers: 0, rating: 0 };
+  const [stats, setStats] = useState({ beers: 0, rating: 0 });
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!session) return;
+      supabase
+        .from('cellar_entries')
+        .select('quantity, rating')
+        .eq('user_id', session.user.id)
+        .then(({ data }) => {
+          if (!data) return;
+          const beers = data.reduce((acc, e) => acc + (e.quantity ?? 0), 0);
+          const rated = data.filter((e) => e.rating != null);
+          const rating = rated.length > 0
+            ? rated.reduce((acc, e) => acc + e.rating, 0) / rated.length
+            : 0;
+          setStats({ beers, rating });
+        });
+    }, [session])
+  );
 
   const handleSave = async () => {
     if (!session) return;

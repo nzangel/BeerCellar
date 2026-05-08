@@ -15,27 +15,24 @@ import Avatar from '../../components/Avatar';
 import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
-import { GroupMember, GroupSession, TastingGroup } from '../../types';
+import { GroupMember, TastingGroup } from '../../types';
 
 export default function GroupScreen() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { session, profile } = useAuth();
+  const { session } = useAuth();
 
   const [group, setGroup] = useState<TastingGroup | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
-  const [sessions, setSessions] = useState<GroupSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [tab, setTab] = useState<'sessions' | 'membres'>('sessions');
 
   useEffect(() => { fetchAll(); }, [id]);
 
   const fetchAll = async () => {
-    const [{ data: g }, { data: m }, { data: s }] = await Promise.all([
+    const [{ data: g }, { data: m }] = await Promise.all([
       supabase.from('tasting_groups').select('*').eq('id', id).single(),
       supabase.from('group_members').select('*, profile:profiles(*)').eq('group_id', id),
-      supabase.from('group_sessions').select('*').eq('group_id', id).order('scheduled_at', { ascending: true }),
     ]);
 
     if (g) setGroup(g as TastingGroup);
@@ -43,14 +40,13 @@ export default function GroupScreen() {
       setMembers(m as GroupMember[]);
       setIsAdmin(m.some((mem: any) => mem.user_id === session?.user.id && mem.role === 'admin'));
     }
-    if (s) setSessions(s as GroupSession[]);
     setLoading(false);
   };
 
   const addMember = async () => {
     Alert.prompt(
       'Inviter un membre',
-      'Entrez le pseudo de l\'utilisateur à inviter:',
+      'Entrez le pseudo de l\'utilisateur à inviter :',
       async (username) => {
         if (!username?.trim()) return;
         const { data: user } = await supabase
@@ -79,30 +75,15 @@ export default function GroupScreen() {
     );
   };
 
-  const createSession = async () => {
-    Alert.prompt(
-      'Nouvelle session',
-      'Titre de la session de dégustation:',
-      async (title) => {
-        if (!title?.trim() || !session) return;
-        const { error } = await supabase.from('group_sessions').insert({
-          group_id: id,
-          title: title.trim(),
-          created_by: session.user.id,
-        });
-        if (!error) fetchAll();
-      }
-    );
-  };
-
-  const deleteSession = (sessionId: string, title: string) => {
-    Alert.alert('Supprimer la session', `Supprimer "${title}" ?`, [
+  const removeMember = (userId: string, username: string) => {
+    if (userId === session?.user.id) return leaveGroup();
+    Alert.alert('Retirer le membre', `Retirer @${username} du groupe ?`, [
       { text: 'Annuler', style: 'cancel' },
       {
-        text: 'Supprimer',
+        text: 'Retirer',
         style: 'destructive',
         onPress: async () => {
-          await supabase.from('group_sessions').delete().eq('id', sessionId);
+          await supabase.from('group_members').delete().eq('group_id', id).eq('user_id', userId);
           fetchAll();
         },
       },
@@ -153,100 +134,54 @@ export default function GroupScreen() {
         <Text style={styles.memberCount}>{members.length} membre{members.length !== 1 ? 's' : ''}</Text>
       </View>
 
-      {/* Tabs */}
-      <View style={styles.tabRow}>
-        {(['sessions', 'membres'] as const).map((t) => (
-          <Pressable
-            key={t}
-            style={[styles.tabBtn, tab === t && styles.tabBtnActive]}
-            onPress={() => setTab(t)}
-          >
-            <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>
-              {t === 'sessions' ? `Sessions (${sessions.length})` : `Membres (${members.length})`}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      {tab === 'sessions' ? (
-        <FlatList
-          data={sessions}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => (
-            <View style={styles.sessionCard}>
-              <View style={styles.sessionIcon}>
-                <Ionicons name="wine" size={24} color={Colors.primary} />
-              </View>
-              <View style={styles.sessionInfo}>
-                <Text style={styles.sessionTitle}>{item.title}</Text>
-                {item.scheduled_at && (
-                  <Text style={styles.sessionDate}>
-                    {new Date(item.scheduled_at).toLocaleDateString('fr-FR', {
-                      day: 'numeric', month: 'long', year: 'numeric',
-                    })}
-                  </Text>
-                )}
-                {item.description && (
-                  <Text style={styles.sessionDesc} numberOfLines={2}>{item.description}</Text>
-                )}
-              </View>
-              {isAdmin && (
-                <Pressable onPress={() => deleteSession(item.id, item.title)} style={styles.deleteBtn}>
-                  <Ionicons name="trash-outline" size={18} color={Colors.error} />
-                </Pressable>
+      {/* Liste des membres */}
+      <FlatList
+        data={members}
+        keyExtractor={(item) => item.user_id}
+        renderItem={({ item }) => (
+          <View style={styles.memberRow}>
+            <Avatar uri={(item.profile as any)?.avatar_url} name={(item.profile as any)?.username} size={44} />
+            <View style={styles.memberInfo}>
+              <Text style={styles.memberName}>@{(item.profile as any)?.username}</Text>
+              {item.role === 'admin' && (
+                <View style={styles.adminBadge}>
+                  <Text style={styles.adminBadgeText}>Admin</Text>
+                </View>
               )}
             </View>
-          )}
-          ListHeaderComponent={
-            isAdmin ? (
-              <Pressable style={styles.createSessionBtn} onPress={createSession}>
-                <Ionicons name="add-circle-outline" size={20} color={Colors.primary} />
-                <Text style={styles.createSessionText}>Nouvelle session de dégustation</Text>
-              </Pressable>
-            ) : null
-          }
-          ListEmptyComponent={
-            <View style={styles.empty}>
-              <Ionicons name="wine-outline" size={48} color={Colors.textDim} />
-              <Text style={styles.emptyText}>Aucune session planifiée</Text>
-            </View>
-          }
-          contentContainerStyle={{ padding: 20 }}
-        />
-      ) : (
-        <FlatList
-          data={members}
-          keyExtractor={(item) => item.user_id}
-          renderItem={({ item }) => (
-            <View style={styles.memberRow}>
-              <Avatar uri={(item.profile as any)?.avatar_url} name={(item.profile as any)?.username} size={44} />
-              <View style={styles.memberInfo}>
-                <Text style={styles.memberName}>@{(item.profile as any)?.username}</Text>
-                {item.role === 'admin' && (
-                  <View style={styles.adminBadge}>
-                    <Text style={styles.adminBadgeText}>Admin</Text>
-                  </View>
-                )}
-              </View>
+            {/* Voir la cave */}
+            <Pressable
+              style={styles.actionBtn}
+              onPress={() => router.push(`/user/${item.user_id}`)}
+            >
+              <Ionicons name="wine-outline" size={18} color={Colors.primary} />
+            </Pressable>
+            {/* Retirer (admin seulement, pas sur soi-même sauf pour quitter) */}
+            {isAdmin && item.user_id !== session?.user.id && (
               <Pressable
-                style={styles.viewCellarBtn}
-                onPress={() => router.push(`/user/${item.user_id}`)}
+                style={[styles.actionBtn, styles.actionBtnDanger]}
+                onPress={() => removeMember(item.user_id, (item.profile as any)?.username ?? '')}
               >
-                <Ionicons name="wine-outline" size={18} color={Colors.primary} />
+                <Ionicons name="person-remove-outline" size={18} color={Colors.error} />
               </Pressable>
-            </View>
-          )}
-          ListHeaderComponent={
-            isAdmin ? (
-              <Pressable style={styles.createSessionBtn} onPress={addMember}>
-                <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
-                <Text style={styles.createSessionText}>Inviter un membre</Text>
-              </Pressable>
-            ) : null
-          }
-          contentContainerStyle={{ padding: 20 }}
-        />
-      )}
+            )}
+          </View>
+        )}
+        ListHeaderComponent={
+          isAdmin ? (
+            <Pressable style={styles.inviteBtn} onPress={addMember}>
+              <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
+              <Text style={styles.inviteBtnText}>Inviter un membre</Text>
+            </Pressable>
+          ) : null
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>Aucun membre</Text>
+          </View>
+        }
+        contentContainerStyle={{ padding: 20 }}
+      />
     </SafeAreaView>
   );
 }
@@ -261,34 +196,13 @@ const styles = StyleSheet.create({
   groupName: { fontSize: 22, fontWeight: '800', color: Colors.text, textAlign: 'center' },
   groupDesc: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
   memberCount: { fontSize: 13, color: Colors.textDim },
-  tabRow: { flexDirection: 'row', marginHorizontal: 20, marginBottom: 4, gap: 8 },
-  tabBtn: {
-    flex: 1, paddingVertical: 10, borderRadius: 12,
-    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border, alignItems: 'center',
-  },
-  tabBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  tabText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
-  tabTextActive: { color: Colors.background },
-  createSessionBtn: {
+  inviteBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 10,
     backgroundColor: Colors.surface, borderRadius: 12, borderWidth: 1,
     borderColor: Colors.primary, borderStyle: 'dashed',
-    padding: 14, marginBottom: 12,
+    padding: 14, marginBottom: 16,
   },
-  createSessionText: { color: Colors.primary, fontWeight: '600', fontSize: 14 },
-  sessionCard: {
-    flexDirection: 'row', gap: 12, backgroundColor: Colors.card,
-    borderRadius: 12, borderWidth: 1, borderColor: Colors.cardBorder,
-    padding: 14, marginBottom: 10,
-  },
-  sessionIcon: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: Colors.surfaceLight, alignItems: 'center', justifyContent: 'center',
-  },
-  sessionInfo: { flex: 1, gap: 4 },
-  sessionTitle: { fontSize: 15, fontWeight: '700', color: Colors.text },
-  sessionDate: { fontSize: 12, color: Colors.primary },
-  sessionDesc: { fontSize: 13, color: Colors.textMuted },
+  inviteBtnText: { color: Colors.primary, fontWeight: '600', fontSize: 14 },
   memberRow: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
     paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border,
@@ -300,16 +214,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8, paddingVertical: 2,
   },
   adminBadgeText: { fontSize: 11, fontWeight: '700', color: Colors.background },
-  deleteBtn: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  viewCellarBtn: {
+  actionBtn: {
     width: 36, height: 36, borderRadius: 18,
     backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border,
     alignItems: 'center', justifyContent: 'center',
   },
-  empty: { alignItems: 'center', gap: 12, marginTop: 40 },
+  actionBtnDanger: { borderColor: Colors.error },
+  empty: { alignItems: 'center', marginTop: 40 },
   emptyText: { color: Colors.textMuted, fontSize: 14 },
 });

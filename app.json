@@ -51,7 +51,8 @@
         {
           "photosPermission": "BeerCellar accède à vos photos pour ajouter une image à vos bières."
         }
-      ]
+      ],
+      "expo-font"
     ],
     "scheme": "beercellar",
     "experiments": {

@@ -93,6 +93,41 @@ export default function ProfileScreen() {
     ]);
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      'Supprimer mon compte',
+      'Cette action est irréversible. Ton profil, ta cave, tes notes et toutes tes données seront définitivement effacés.',
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: () => {
+            Alert.alert(
+              'Dernière confirmation',
+              'Es-tu vraiment sûr ? Toutes tes données seront perdues.',
+              [
+                { text: 'Annuler', style: 'cancel' },
+                {
+                  text: 'Oui, supprimer',
+                  style: 'destructive',
+                  onPress: async () => {
+                    const { error } = await supabase.rpc('delete_user');
+                    if (error) {
+                      Alert.alert('Erreur', 'Impossible de supprimer le compte. Contacte le support.');
+                    } else {
+                      await signOut();
+                    }
+                  },
+                },
+              ]
+            );
+          },
+        },
+      ]
+    );
+  };
+
   const displayAvatar = avatarUri ?? profile?.avatar_url;
 
   return (
@@ -225,6 +260,10 @@ export default function ProfileScreen() {
                 <Ionicons name="log-out-outline" size={20} color={Colors.error} />
                 <Text style={styles.signOutText}>Se déconnecter</Text>
               </Pressable>
+              <Pressable style={styles.deleteAccountBtn} onPress={handleDeleteAccount}>
+                <Ionicons name="trash-outline" size={18} color={Colors.textDim} />
+                <Text style={styles.deleteAccountText}>Supprimer mon compte</Text>
+              </Pressable>
             </View>
           )}
         </ScrollView>
@@ -294,4 +333,9 @@ const styles = StyleSheet.create({
     borderColor: Colors.border, padding: 14,
   },
   signOutText: { fontSize: 15, color: Colors.error, fontWeight: '600' },
+  deleteAccountBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderRadius: 14, padding: 14, marginTop: 8,
+  },
+  deleteAccountText: { fontSize: 14, color: Colors.textDim },
 });

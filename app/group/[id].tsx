@@ -1,13 +1,18 @@
 import { Ionicons } from '@expo/vector-icons';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
+  Animated,
+  Modal,
   Pressable,
+  SafeAreaView as SafeAreaViewRN,
+  ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +20,8 @@ import Avatar from '../../components/Avatar';
 import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
-import { GroupMember, TastingGroup } from '../../types';
+import BeerCard from '../../components/BeerCard';
+import { CellarEntry, GroupMember, TastingGroup } from '../../types';
 
 export default function GroupScreen() {
   const router = useRouter();
@@ -26,6 +32,33 @@ export default function GroupScreen() {
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [tab, setTab] = useState<'membres' | 'bieres'>('membres');
+  const [inviteModal, setInviteModal] = useState(false);
+  const [inviteUsername, setInviteUsername] = useState('');
+  const [inviteLoading, setInviteLoading] = useState(false);
+  const [friends, setFriends] = useState<Array<{ id: string; username: string; avatar_url: string | null }>>([]);
+  const [groupBeers, setGroupBeers] = useState<(CellarEntry & {
+    ownerUsername: string;
+    ownerAvatar: string | null;
+    cellarName: string | null;
+    cellarEmoji: string | null;
+  })[]>([]);
+  const [filterMemberId, setFilterMemberId] = useState<string | null>(null);
+  const [beersLoading, setBeersLoading] = useState(false);
+  const [scannerVisible, setScannerVisible] = useState(false);
+  const [scanResult, setScanResult] = useState<
+    { found: true; entry: CellarEntry & { ownerUsername: string; ownerAvatar: string | null; cellarName: string | null; cellarEmoji: string | null } } |
+    { found: false; barcode: string } |
+    null
+  >(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+  const scanCooldown = useRef(false);
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  const HERO_HEIGHT = 160;
+  const heroOpacity = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT * 0.6], outputRange: [1, 0], extrapolate: 'clamp' });
+  const heroHeight = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT], outputRange: [HERO_HEIGHT, 0], extrapolate: 'clamp' });
+  const heroTranslate = scrollY.interpolate({ inputRange: [0, HERO_HEIGHT], outputRange: [0, -16], extrapolate: 'clamp' });
 
   useEffect(() => { fetchAll(); }, [id]);
 
@@ -40,39 +73,127 @@ export default function GroupScreen() {
       setMembers(m as GroupMember[]);
       setIsAdmin(m.some((mem: any) => mem.user_id === session?.user.id && mem.role === 'admin'));
     }
+
+    // Charger la liste des amis
+    if (session) {
+      const { data: fData } = await supabase
+        .from('friendships')
+        .select('requester_id, addressee_id')
+        .or(`requester_id.eq.${session.user.id},addressee_id.eq.${session.user.id}`)
+        .eq('status', 'accepted');
+
+      if (fData && fData.length > 0) {
+        const friendIds = fData.map((f) =>
+          f.requester_id === session.user.id ? f.addressee_id : f.requester_id
+        );
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, username, avatar_url')
+          .in('id', friendIds);
+        setFriends(profiles ?? []);
+      }
+    }
+
     setLoading(false);
   };
 
-  const addMember = async () => {
-    Alert.prompt(
-      'Inviter un membre',
-      'Entrez le pseudo de l\'utilisateur à inviter :',
-      async (username) => {
-        if (!username?.trim()) return;
-        const { data: user } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('username', username.trim())
-          .single();
+  const fetchGroupBeers = async (currentMembers: GroupMember[]) => {
+    if (currentMembers.length === 0) return;
+    setBeersLoading(true);
 
-        if (!user) {
-          Alert.alert('Introuvable', `Aucun utilisateur avec le pseudo "${username}".`);
-          return;
-        }
+    const memberIds = currentMembers.map((m) => m.user_id);
+    const { data } = await supabase
+      .from('cellar_entries')
+      .select('*, beer:beers(*), cellar:cellars(name, emoji)')
+      .in('user_id', memberIds)
+      .order('added_at', { ascending: false });
 
-        const { error } = await supabase.from('group_members').insert({
-          group_id: id,
-          user_id: user.id,
-          role: 'member',
-        });
+    if (data) {
+      const profileMap = new Map(
+        currentMembers.map((m) => [
+          m.user_id,
+          { username: (m.profile as any)?.username ?? '?', avatar_url: (m.profile as any)?.avatar_url ?? null },
+        ])
+      );
+      setGroupBeers(
+        (data as any[]).map((entry) => ({
+          ...entry,
+          ownerUsername: profileMap.get(entry.user_id)?.username ?? '?',
+          ownerAvatar: profileMap.get(entry.user_id)?.avatar_url ?? null,
+          cellarName: entry.cellar?.name ?? null,
+          cellarEmoji: entry.cellar?.emoji ?? null,
+        }))
+      );
+      setFilterMemberId(null);
+    }
+    setBeersLoading(false);
+  };
 
-        if (error) {
-          Alert.alert('Erreur', 'Cet utilisateur est peut-être déjà membre.');
-        } else {
-          fetchAll();
-        }
+  useEffect(() => {
+    scrollY.setValue(0);
+    if (tab === 'bieres' && groupBeers.length === 0 && members.length > 0) {
+      fetchGroupBeers(members);
+    }
+  }, [tab]);
+
+  const openScanner = async () => {
+    if (!cameraPermission?.granted) {
+      const { granted } = await requestCameraPermission();
+      if (!granted) return;
+    }
+    scanCooldown.current = false;
+    setScannerVisible(true);
+  };
+
+  const handleScanBarcode = ({ data: barcode }: { data: string }) => {
+    if (scanCooldown.current) return;
+    scanCooldown.current = true;
+    setScannerVisible(false);
+
+    const found = groupBeers.find((e) => e.beer?.barcode === barcode);
+    if (found) {
+      setScanResult({ found: true, entry: found });
+    } else {
+      setScanResult({ found: false, barcode });
+    }
+  };
+
+  const addMember = async (directUserId?: string) => {
+    setInviteLoading(true);
+
+    let targetUserId = directUserId;
+
+    if (!targetUserId) {
+      if (!inviteUsername.trim()) { setInviteLoading(false); return; }
+      const { data: user } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('username', inviteUsername.trim())
+        .single();
+
+      if (!user) {
+        setInviteLoading(false);
+        Alert.alert('Introuvable', `Aucun utilisateur avec le pseudo "@${inviteUsername}".`);
+        return;
       }
-    );
+      targetUserId = user.id;
+    }
+
+    const { error } = await supabase.from('group_members').insert({
+      group_id: id,
+      user_id: targetUserId,
+      role: 'member',
+    });
+
+    setInviteLoading(false);
+
+    if (error) {
+      Alert.alert('Erreur', 'Cet utilisateur est peut-être déjà membre.');
+    } else {
+      setInviteModal(false);
+      setInviteUsername('');
+      fetchAll();
+    }
   };
 
   const removeMember = (userId: string, username: string) => {
@@ -83,8 +204,16 @@ export default function GroupScreen() {
         text: 'Retirer',
         style: 'destructive',
         onPress: async () => {
-          await supabase.from('group_members').delete().eq('group_id', id).eq('user_id', userId);
-          fetchAll();
+          const { error } = await supabase
+            .from('group_members')
+            .delete()
+            .eq('group_id', id)
+            .eq('user_id', userId);
+          if (error) {
+            Alert.alert('Erreur', error.message);
+          } else {
+            fetchAll();
+          }
         },
       },
     ]);
@@ -107,6 +236,10 @@ export default function GroupScreen() {
     ]);
   };
 
+  const filteredGroupBeers = filterMemberId
+    ? groupBeers.filter((e) => e.user_id === filterMemberId)
+    : groupBeers;
+
   if (loading) {
     return (
       <View style={{ flex: 1, backgroundColor: Colors.background, alignItems: 'center', justifyContent: 'center' }}>
@@ -126,62 +259,342 @@ export default function GroupScreen() {
         </Pressable>
       </View>
 
-      {/* Group hero */}
-      <View style={styles.groupHero}>
+      {/* Group hero — se rétracte au scroll */}
+      <Animated.View style={[styles.groupHero, { height: heroHeight, opacity: heroOpacity, transform: [{ translateY: heroTranslate }], overflow: 'hidden' }]}>
         <Avatar uri={group?.avatar_url} name={group?.name} size={72} />
         <Text style={styles.groupName}>{group?.name}</Text>
         {group?.description && <Text style={styles.groupDesc}>{group.description}</Text>}
         <Text style={styles.memberCount}>{members.length} membre{members.length !== 1 ? 's' : ''}</Text>
+      </Animated.View>
+
+      {/* Scanner caméra */}
+      <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: '#000' }}>
+          <CameraView
+            style={StyleSheet.absoluteFill}
+            facing="back"
+            onBarcodeScanned={handleScanBarcode}
+            barcodeScannerSettings={{ barcodeTypes: ['ean13', 'ean8', 'upc_a', 'upc_e', 'code128', 'code39'] }}
+          />
+          <SafeAreaViewRN style={styles.scannerOverlay}>
+            <Pressable style={styles.scannerClose} onPress={() => setScannerVisible(false)}>
+              <Ionicons name="close" size={28} color="#fff" />
+            </Pressable>
+            <View style={styles.scannerFrame}>
+              <View style={[styles.corner, styles.cornerTL]} />
+              <View style={[styles.corner, styles.cornerTR]} />
+              <View style={[styles.corner, styles.cornerBL]} />
+              <View style={[styles.corner, styles.cornerBR]} />
+            </View>
+            <Text style={styles.scannerHint}>Scanne le code-barres pour rechercher une bière dans le groupe</Text>
+          </SafeAreaViewRN>
+        </View>
+      </Modal>
+
+      {/* Résultat du scan */}
+      <Modal
+        visible={scanResult !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setScanResult(null)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setScanResult(null)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {scanResult?.found ? (
+              <>
+                <View style={styles.scanResultHeader}>
+                  <Ionicons name="checkmark-circle" size={32} color={Colors.success} />
+                  <Text style={styles.scanResultTitle}>Trouvée dans le groupe !</Text>
+                </View>
+                <View style={styles.scanResultOwner}>
+                  <Avatar uri={scanResult.entry.ownerAvatar} name={scanResult.entry.ownerUsername} size={28} />
+                  <Text style={styles.scanResultOwnerName}>Cave de @{scanResult.entry.ownerUsername}</Text>
+                </View>
+                <View style={styles.scanResultBeer}>
+                  <Text style={styles.scanResultBeerName}>{scanResult.entry.beer?.name ?? 'Bière'}</Text>
+                  {scanResult.entry.beer?.brewery && (
+                    <Text style={styles.scanResultBeerBrewery}>{scanResult.entry.beer.brewery}</Text>
+                  )}
+                  <View style={styles.scanResultMeta}>
+                    {scanResult.entry.beer?.style && (
+                      <Text style={styles.scanResultStyle}>{scanResult.entry.beer.style}</Text>
+                    )}
+                    {scanResult.entry.beer?.abv != null && (
+                      <Text style={styles.scanResultAbv}>{scanResult.entry.beer.abv}%</Text>
+                    )}
+                  </View>
+                </View>
+                <Pressable style={styles.scanResultBtn} onPress={() => {
+                  setScanResult(null);
+                  router.push(`/user/${scanResult.entry.user_id}`);
+                }}>
+                  <Ionicons name="wine-outline" size={16} color={Colors.background} />
+                  <Text style={styles.scanResultBtnText}>Voir sa cave</Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <View style={styles.scanResultHeader}>
+                  <Ionicons name="close-circle" size={32} color={Colors.error} />
+                  <Text style={styles.scanResultTitle}>Absente du groupe</Text>
+                </View>
+                <Text style={styles.scanResultAbsentText}>
+                  Aucun membre du groupe n'a cette bière dans sa cave.
+                </Text>
+                <Pressable style={[styles.scanResultBtn, styles.scanResultBtnClose]} onPress={() => setScanResult(null)}>
+                  <Text style={styles.scanResultBtnCloseText}>Fermer</Text>
+                </Pressable>
+              </>
+            )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Tabs */}
+      <View style={styles.tabRow}>
+        <Pressable
+          style={[styles.tabBtn, tab === 'membres' && styles.tabBtnActive]}
+          onPress={() => setTab('membres')}
+        >
+          <Ionicons name="people-outline" size={16} color={tab === 'membres' ? Colors.background : Colors.textMuted} />
+          <Text style={[styles.tabText, tab === 'membres' && styles.tabTextActive]}>
+            Membres ({members.length})
+          </Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tabBtn, tab === 'bieres' && styles.tabBtnActive]}
+          onPress={() => setTab('bieres')}
+        >
+          <Ionicons name="beer-outline" size={16} color={tab === 'bieres' ? Colors.background : Colors.textMuted} />
+          <Text style={[styles.tabText, tab === 'bieres' && styles.tabTextActive]}>
+            Bières ({groupBeers.length})
+          </Text>
+        </Pressable>
+        {tab === 'bieres' && (
+          <Pressable style={styles.scanBtn} onPress={openScanner}>
+            <Ionicons name="barcode-outline" size={22} color={Colors.primary} />
+          </Pressable>
+        )}
       </View>
 
-      {/* Liste des membres */}
-      <FlatList
-        data={members}
-        keyExtractor={(item) => item.user_id}
-        renderItem={({ item }) => (
-          <View style={styles.memberRow}>
-            <Avatar uri={(item.profile as any)?.avatar_url} name={(item.profile as any)?.username} size={44} />
-            <View style={styles.memberInfo}>
-              <Text style={styles.memberName}>@{(item.profile as any)?.username}</Text>
-              {item.role === 'admin' && (
-                <View style={styles.adminBadge}>
-                  <Text style={styles.adminBadgeText}>Admin</Text>
-                </View>
+      {/* Modal invitation */}
+      <Modal
+        visible={inviteModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setInviteModal(false); setInviteUsername(''); }}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => { setInviteModal(false); setInviteUsername(''); }}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Inviter un membre</Text>
+
+            {/* Champ de recherche */}
+            <View style={styles.modalSearchBox}>
+              <Ionicons name="search" size={16} color={Colors.textMuted} />
+              <TextInput
+                style={styles.modalInput}
+                value={inviteUsername}
+                onChangeText={setInviteUsername}
+                placeholder="Rechercher un ami…"
+                placeholderTextColor={Colors.textDim}
+                autoCapitalize="none"
+                autoFocus
+              />
+              {inviteUsername.length > 0 && (
+                <Pressable onPress={() => setInviteUsername('')}>
+                  <Ionicons name="close-circle" size={16} color={Colors.textDim} />
+                </Pressable>
               )}
             </View>
-            {/* Voir la cave */}
-            <Pressable
-              style={styles.actionBtn}
-              onPress={() => router.push(`/user/${item.user_id}`)}
-            >
-              <Ionicons name="wine-outline" size={18} color={Colors.primary} />
-            </Pressable>
-            {/* Retirer (admin seulement, pas sur soi-même sauf pour quitter) */}
-            {isAdmin && item.user_id !== session?.user.id && (
+
+            {/* Suggestions d'amis */}
+            {(() => {
+              const memberIds = new Set(members.map((m) => m.user_id));
+              const suggestions = friends.filter(
+                (f) =>
+                  !memberIds.has(f.id) &&
+                  (inviteUsername === '' ||
+                    f.username.toLowerCase().includes(inviteUsername.toLowerCase()))
+              );
+              if (suggestions.length === 0 && inviteUsername === '') return null;
+              return (
+                <View style={styles.suggestionsBox}>
+                  {suggestions.length > 0 ? (
+                    <ScrollView style={{ maxHeight: 220 }} keyboardShouldPersistTaps="handled">
+                      {suggestions.map((friend) => (
+                        <Pressable
+                          key={friend.id}
+                          style={styles.suggestionRow}
+                          onPress={() => addMember(friend.id)}
+                        >
+                          <Avatar uri={friend.avatar_url} name={friend.username} size={36} />
+                          <Text style={styles.suggestionName}>@{friend.username}</Text>
+                          <Ionicons name="person-add-outline" size={18} color={Colors.primary} />
+                        </Pressable>
+                      ))}
+                    </ScrollView>
+                  ) : (
+                    <View style={styles.suggestionsEmpty}>
+                      <Text style={styles.suggestionsEmptyText}>Aucun ami trouvé</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            })()}
+
+            {/* Actions */}
+            <View style={styles.modalActions}>
               <Pressable
-                style={[styles.actionBtn, styles.actionBtnDanger]}
-                onPress={() => removeMember(item.user_id, (item.profile as any)?.username ?? '')}
+                style={styles.modalCancelBtn}
+                onPress={() => { setInviteModal(false); setInviteUsername(''); }}
               >
-                <Ionicons name="person-remove-outline" size={18} color={Colors.error} />
+                <Text style={styles.modalCancelText}>Annuler</Text>
               </Pressable>
-            )}
-          </View>
-        )}
-        ListHeaderComponent={
-          isAdmin ? (
-            <Pressable style={styles.inviteBtn} onPress={addMember}>
-              <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
-              <Text style={styles.inviteBtnText}>Inviter un membre</Text>
-            </Pressable>
-          ) : null
-        }
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <Text style={styles.emptyText}>Aucun membre</Text>
-          </View>
-        }
-        contentContainerStyle={{ padding: 20 }}
-      />
+              <Pressable
+                style={[styles.modalConfirmBtn, (!inviteUsername.trim() || inviteLoading) && styles.modalConfirmDisabled]}
+                onPress={() => addMember()}
+                disabled={!inviteUsername.trim() || inviteLoading}
+              >
+                {inviteLoading
+                  ? <ActivityIndicator size="small" color={Colors.background} />
+                  : <Text style={styles.modalConfirmText}>Inviter</Text>
+                }
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {tab === 'membres' ? (
+        /* Liste des membres */
+        <Animated.FlatList
+          data={members}
+          keyExtractor={(item) => item.user_id}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+          scrollEventThrottle={16}
+          renderItem={({ item }) => (
+            <View style={styles.memberRow}>
+              <Avatar uri={(item.profile as any)?.avatar_url} name={(item.profile as any)?.username} size={44} />
+              <View style={styles.memberInfo}>
+                <Text style={styles.memberName}>@{(item.profile as any)?.username}</Text>
+                {item.role === 'admin' && (
+                  <View style={styles.adminBadge}>
+                    <Text style={styles.adminBadgeText}>Admin</Text>
+                  </View>
+                )}
+              </View>
+              <Pressable
+                style={styles.actionBtn}
+                onPress={() => router.push(`/user/${item.user_id}`)}
+              >
+                <Ionicons name="wine-outline" size={18} color={Colors.primary} />
+              </Pressable>
+              {isAdmin && item.user_id !== session?.user.id && (
+                <Pressable
+                  style={[styles.actionBtn, styles.actionBtnDanger]}
+                  onPress={() => removeMember(item.user_id, (item.profile as any)?.username ?? '')}
+                >
+                  <Ionicons name="person-remove-outline" size={18} color={Colors.error} />
+                </Pressable>
+              )}
+            </View>
+          )}
+          ListHeaderComponent={
+            isAdmin ? (
+              <Pressable style={styles.inviteBtn} onPress={() => setInviteModal(true)}>
+                <Ionicons name="person-add-outline" size={20} color={Colors.primary} />
+                <Text style={styles.inviteBtnText}>Inviter un membre</Text>
+              </Pressable>
+            ) : null
+          }
+          ListEmptyComponent={
+            <View style={styles.empty}>
+              <Text style={styles.emptyText}>Aucun membre</Text>
+            </View>
+          }
+          contentContainerStyle={{ padding: 20 }}
+        />
+      ) : (
+        /* Liste des bières du groupe */
+        <Animated.FlatList
+          data={filteredGroupBeers}
+          keyExtractor={(item) => item.id}
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
+          scrollEventThrottle={16}
+          renderItem={({ item }) => (
+            <View>
+              <View style={styles.beerOwnerRow}>
+                <Avatar uri={item.ownerAvatar} name={item.ownerUsername} size={20} />
+                <Text style={styles.beerOwnerName}>@{item.ownerUsername}</Text>
+                {item.cellarEmoji != null && item.cellarName != null && (
+                  <>
+                    <Text style={styles.beerOwnerSep}>·</Text>
+                    <Text style={styles.beerCellarTag}>
+                      {item.cellarEmoji} {item.cellarName}
+                    </Text>
+                  </>
+                )}
+              </View>
+              <BeerCard entry={item} readonly />
+            </View>
+          )}
+          ListHeaderComponent={
+            beersLoading ? (
+              <ActivityIndicator color={Colors.primary} style={{ marginTop: 40 }} />
+            ) : members.length > 1 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.memberFilterRow}
+              >
+                <Pressable
+                  style={[styles.memberFilterChip, filterMemberId === null && styles.memberFilterChipActive]}
+                  onPress={() => setFilterMemberId(null)}
+                >
+                  <Text style={[styles.memberFilterText, filterMemberId === null && styles.memberFilterTextActive]}>
+                    Tous ({groupBeers.length})
+                  </Text>
+                </Pressable>
+                {members.map((m) => {
+                  const count = groupBeers.filter((e) => e.user_id === m.user_id).length;
+                  const isActive = filterMemberId === m.user_id;
+                  return (
+                    <Pressable
+                      key={m.user_id}
+                      style={[styles.memberFilterChip, isActive && styles.memberFilterChipActive]}
+                      onPress={() => setFilterMemberId(isActive ? null : m.user_id)}
+                    >
+                      <Avatar uri={(m.profile as any)?.avatar_url} name={(m.profile as any)?.username} size={20} />
+                      <Text style={[styles.memberFilterText, isActive && styles.memberFilterTextActive]}>
+                        @{(m.profile as any)?.username}
+                      </Text>
+                      <Text style={[styles.memberFilterCount, isActive && styles.memberFilterCountActive]}>
+                        {count}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            ) : null
+          }
+          ListEmptyComponent={
+            !beersLoading ? (
+              <View style={styles.empty}>
+                <Ionicons name="beer-outline" size={48} color={Colors.textDim} />
+                <Text style={styles.emptyText}>
+                  {filterMemberId ? 'Aucune bière pour ce membre' : 'Aucune bière dans le groupe'}
+                </Text>
+              </View>
+            ) : null
+          }
+          onRefresh={() => fetchGroupBeers(members)}
+          refreshing={beersLoading}
+          contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 20 }}
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -220,6 +633,138 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   actionBtnDanger: { borderColor: Colors.error },
-  empty: { alignItems: 'center', marginTop: 40 },
+  tabRow: {
+    flexDirection: 'row', marginHorizontal: 20, marginBottom: 8, gap: 8,
+  },
+  tabBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    gap: 6, paddingVertical: 10, borderRadius: 12,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+  },
+  tabBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  tabText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  tabTextActive: { color: Colors.background },
+  beerOwnerRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap',
+  },
+  beerOwnerName: { fontSize: 12, color: Colors.textMuted, fontWeight: '600' },
+  beerOwnerSep: { fontSize: 12, color: Colors.textDim },
+  beerCellarTag: { fontSize: 12, color: Colors.textDim, fontWeight: '500' },
+  memberFilterRow: { paddingBottom: 16, gap: 8, alignItems: 'center' },
+  memberFilterChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 12, height: 36, borderRadius: 18,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+  },
+  memberFilterChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  memberFilterText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  memberFilterTextActive: { color: Colors.background },
+  memberFilterCount: {
+    fontSize: 11, fontWeight: '700', color: Colors.textDim,
+    backgroundColor: Colors.surfaceLight, borderRadius: 8,
+    paddingHorizontal: 6, paddingVertical: 1,
+  },
+  memberFilterCountActive: { backgroundColor: 'rgba(255,255,255,0.25)', color: Colors.background },
+  scanBtn: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  scannerOverlay: {
+    flex: 1, backgroundColor: 'transparent',
+    justifyContent: 'space-between', padding: 20,
+  },
+  scannerClose: {
+    alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 20, padding: 6,
+  },
+  scannerFrame: {
+    width: 220, height: 220, alignSelf: 'center',
+    position: 'relative',
+  },
+  corner: {
+    position: 'absolute', width: 28, height: 28,
+    borderColor: '#fff', borderWidth: 3,
+  },
+  cornerTL: { top: 0, left: 0, borderRightWidth: 0, borderBottomWidth: 0, borderTopLeftRadius: 6 },
+  cornerTR: { top: 0, right: 0, borderLeftWidth: 0, borderBottomWidth: 0, borderTopRightRadius: 6 },
+  cornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 6 },
+  cornerBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 6 },
+  scannerHint: {
+    color: '#fff', textAlign: 'center', fontSize: 14,
+    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 10,
+    paddingHorizontal: 16, paddingVertical: 10,
+  },
+  scanResultHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 16 },
+  scanResultTitle: { fontSize: 17, fontWeight: '800', color: Colors.text, flex: 1 },
+  scanResultOwner: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.surfaceLight, borderRadius: 10, padding: 10, marginBottom: 14,
+  },
+  scanResultOwnerName: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  scanResultBeer: { gap: 4, marginBottom: 16 },
+  scanResultBeerName: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  scanResultBeerBrewery: { fontSize: 13, color: Colors.textMuted },
+  scanResultMeta: { flexDirection: 'row', gap: 8, marginTop: 4 },
+  scanResultStyle: {
+    fontSize: 11, color: Colors.primary, backgroundColor: Colors.surfaceLight,
+    paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4, overflow: 'hidden',
+  },
+  scanResultAbv: { fontSize: 11, color: Colors.textMuted, alignSelf: 'center' },
+  scanResultBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: Colors.primary, borderRadius: 12, paddingVertical: 12,
+  },
+  scanResultBtnText: { color: Colors.background, fontWeight: '700', fontSize: 14 },
+  scanResultAbsentText: {
+    fontSize: 14, color: Colors.textMuted, textAlign: 'center',
+    lineHeight: 20, marginBottom: 20,
+  },
+  scanResultBtnClose: { backgroundColor: Colors.surfaceLight },
+  scanResultBtnCloseText: { color: Colors.textMuted, fontWeight: '700', fontSize: 14 },
+  empty: { alignItems: 'center', marginTop: 40, gap: 10 },
   emptyText: { color: Colors.textMuted, fontSize: 14 },
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface, borderRadius: 16, padding: 24,
+    width: '100%', maxWidth: 360,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.text, marginBottom: 16 },
+  modalSearchBox: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    backgroundColor: Colors.background, borderRadius: 12, borderWidth: 1,
+    borderColor: Colors.border, paddingHorizontal: 12, marginBottom: 12,
+  },
+  modalInput: {
+    flex: 1, color: Colors.text, fontSize: 15, paddingVertical: 12,
+  },
+  suggestionsBox: {
+    borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.background, marginBottom: 16, overflow: 'hidden',
+  },
+  suggestionRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingHorizontal: 14, paddingVertical: 10,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  suggestionName: { flex: 1, fontSize: 14, fontWeight: '600', color: Colors.text },
+  suggestionsEmpty: { paddingVertical: 16, alignItems: 'center' },
+  suggestionsEmptyText: { fontSize: 13, color: Colors.textMuted },
+  modalActions: { flexDirection: 'row', gap: 12 },
+  modalCancelBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 12,
+    backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  modalCancelText: { color: Colors.textMuted, fontWeight: '600', fontSize: 14 },
+  modalConfirmBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 12,
+    backgroundColor: Colors.primary, alignItems: 'center',
+  },
+  modalConfirmDisabled: { opacity: 0.4 },
+  modalConfirmText: { color: Colors.background, fontWeight: '700', fontSize: 14 },
 });

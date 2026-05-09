@@ -49,10 +49,20 @@ export const TASTE_TAGS: TasteTag[] = [
   'herbacé', 'réglisse', 'pain grillé', 'boisé', 'acidulé',
 ];
 
+export type Cellar = {
+  id: string;
+  user_id: string;
+  name: string;
+  emoji: string;
+  is_default: boolean;
+  created_at: string;
+};
+
 export type CellarEntry = {
   id: string;
   user_id: string;
   beer_id: string;
+  cellar_id: string;
   beer?: Beer;
   rating: number | null;
   notes: string | null;

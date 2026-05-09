@@ -8,6 +8,7 @@ import {
   Modal,
   Pressable,
   RefreshControl,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -19,46 +20,122 @@ import BeerCard from '../../components/BeerCard';
 import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
-import { CellarEntry } from '../../types';
+import { Cellar, CellarEntry } from '../../types';
 
 type SortOption = 'date' | 'rating' | 'name' | 'favorite';
+
+const EMOJIS = ['🍺', '🍻', '🥃', '🍷', '🧊', '🌟', '🏆', '🔥', '🌿', '🎯'];
 
 export default function CellarScreen() {
   const router = useRouter();
   const { session } = useAuth();
+
+  const [cellars, setCellars] = useState<Cellar[]>([]);
+  const [activeCellarId, setActiveCellarId] = useState<string | null>(null);
   const [entries, setEntries] = useState<CellarEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption>('date');
   const [filterFavorites, setFilterFavorites] = useState(false);
+
+  // Création de cave
+  const [createModal, setCreateModal] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newEmoji, setNewEmoji] = useState('🍺');
+  const [creating, setCreating] = useState(false);
+
+  // Scanner
   const [scannerVisible, setScannerVisible] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanCooldown = useRef(false);
 
-  const fetchCellar = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     if (!session) return;
-    const { data, error } = await supabase
-      .from('cellar_entries')
-      .select('*, beer:beers(*)')
-      .eq('user_id', session.user.id);
 
-    if (!error && data) setEntries(data as CellarEntry[]);
+    const [{ data: cellarData }, { data: entryData }] = await Promise.all([
+      supabase.from('cellars').select('*').eq('user_id', session.user.id).order('created_at'),
+      supabase.from('cellar_entries').select('*, beer:beers(*)').eq('user_id', session.user.id),
+    ]);
+
+    let finalCellars = (cellarData as Cellar[]) ?? [];
+
+    // Créer une cave par défaut si l'utilisateur n'en a pas encore
+    if (finalCellars.length === 0) {
+      const { data: created } = await supabase
+        .from('cellars')
+        .insert({ user_id: session.user.id, name: 'Ma cave', emoji: '🍺', is_default: true })
+        .select()
+        .single();
+      if (created) finalCellars = [created as Cellar];
+    }
+
+    setCellars(finalCellars);
+    setActiveCellarId((prev) => prev ?? finalCellars[0]?.id ?? null);
+    if (entryData) setEntries(entryData as CellarEntry[]);
   }, [session]);
 
   useFocusEffect(
     useCallback(() => {
-      fetchCellar().finally(() => setLoading(false));
-    }, [fetchCellar])
+      fetchAll().finally(() => setLoading(false));
+    }, [fetchAll])
   );
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await fetchCellar();
+    await fetchAll();
     setRefreshing(false);
   };
 
-  const filtered = entries
+  const createCellar = async () => {
+    if (!newName.trim() || !session) return;
+    setCreating(true);
+    const { data, error } = await supabase
+      .from('cellars')
+      .insert({ user_id: session.user.id, name: newName.trim(), emoji: newEmoji, is_default: false })
+      .select()
+      .single();
+    setCreating(false);
+    if (!error && data) {
+      const newCellar = data as Cellar;
+      setCellars((prev) => [...prev, newCellar]);
+      setActiveCellarId(newCellar.id);
+      setCreateModal(false);
+      setNewName('');
+      setNewEmoji('🍺');
+    }
+  };
+
+  const deleteCellar = (cellar: Cellar) => {
+    if (cellar.is_default) {
+      Alert.alert('Impossible', 'La cave par défaut ne peut pas être supprimée.');
+      return;
+    }
+    const count = entries.filter((e) => e.cellar_id === cellar.id).length;
+    Alert.alert(
+      'Supprimer la cave',
+      `Supprimer "${cellar.emoji} ${cellar.name}" ?${count > 0 ? `\n\nLes ${count} bières qu'elle contient seront aussi supprimées.` : ''}`,
+      [
+        { text: 'Annuler', style: 'cancel' },
+        {
+          text: 'Supprimer',
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.from('cellars').delete().eq('id', cellar.id);
+            const remaining = cellars.filter((c) => c.id !== cellar.id);
+            setCellars(remaining);
+            setEntries((prev) => prev.filter((e) => e.cellar_id !== cellar.id));
+            if (activeCellarId === cellar.id) setActiveCellarId(remaining[0]?.id ?? null);
+          },
+        },
+      ]
+    );
+  };
+
+  // Entrées de la cave active
+  const activeEntries = entries.filter((e) => e.cellar_id === activeCellarId);
+
+  const filtered = activeEntries
     .filter((e) => {
       const q = search.toLowerCase();
       const matchSearch =
@@ -77,7 +154,8 @@ export default function CellarScreen() {
       return new Date(b.added_at).getTime() - new Date(a.added_at).getTime();
     });
 
-  const totalBeers = entries.reduce((acc, e) => acc + e.quantity, 0);
+  const totalBeers = activeEntries.reduce((acc, e) => acc + e.quantity, 0);
+  const activeCellar = cellars.find((c) => c.id === activeCellarId);
 
   const openScanner = async () => {
     if (!cameraPermission?.granted) {
@@ -93,74 +171,137 @@ export default function CellarScreen() {
     scanCooldown.current = true;
     setScannerVisible(false);
 
-    // Cherche dans les entrées déjà chargées
-    const found = entries.find((e) => e.beer?.barcode === barcode);
-    if (found) {
-      router.push(`/beer/${found.id}`);
-      return;
-    }
+    const found = activeEntries.find((e) => e.beer?.barcode === barcode);
+    if (found) { router.push(`/beer/${found.id}`); return; }
 
-    // Pas dans la cave — lookup catalogue + Open Food Facts en avance
     const lookupBeer = async () => {
-      // Catalogue Supabase d'abord
-      const { data: globalBeer } = await supabase
-        .from('beers')
-        .select('*')
-        .eq('barcode', barcode)
-        .maybeSingle();
-
-      if (globalBeer) {
-        return { beerId: globalBeer.id, beerData: null };
-      }
-
-      // Open Food Facts ensuite
+      const { data: globalBeer } = await supabase.from('beers').select('*').eq('barcode', barcode).maybeSingle();
+      if (globalBeer) return { beerId: globalBeer.id, beerData: null };
       const { lookupBeerByBarcode } = await import('../../lib/beerApi');
       const data = await lookupBeerByBarcode(barcode);
       return { beerId: null, beerData: data ? { ...data, barcode } : null };
     };
 
-    Alert.alert(
-      'Bière non trouvée',
-      'Cette bière n\'est pas dans ta cave. Tu veux l\'ajouter ?',
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Ajouter',
-          onPress: async () => {
-            const { beerId, beerData } = await lookupBeer();
-            if (beerId) {
-              router.push({ pathname: '/beer/add', params: { beerId } });
-            } else if (beerData) {
-              router.push({ pathname: '/beer/add', params: { beerData: JSON.stringify(beerData) } });
-            } else {
-              router.push({ pathname: '/beer/add', params: { barcode } });
-            }
-          },
+    Alert.alert('Bière non trouvée', "Cette bière n'est pas dans cette cave. Tu veux l'ajouter ?", [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: 'Ajouter',
+        onPress: async () => {
+          const { beerId, beerData } = await lookupBeer();
+          const params: any = { cellarId: activeCellarId };
+          if (beerId) params.beerId = beerId;
+          else if (beerData) params.beerData = JSON.stringify(beerData);
+          else params.barcode = barcode;
+          router.push({ pathname: '/beer/add', params });
         },
-      ]
-    );
+      },
+    ]);
   };
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Header */}
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Ma Cave</Text>
+          <Text style={styles.title}>
+            {activeCellar ? `${activeCellar.emoji} ${activeCellar.name}` : 'Ma Cave'}
+          </Text>
           <Text style={styles.subtitle}>
-            {entries.length} bière{entries.length !== 1 ? 's' : ''} · {totalBeers} exemplaire{totalBeers !== 1 ? 's' : ''}
+            {activeEntries.length} bière{activeEntries.length !== 1 ? 's' : ''} · {totalBeers} exemplaire{totalBeers !== 1 ? 's' : ''}
           </Text>
         </View>
         <View style={styles.headerBtns}>
           <Pressable style={styles.scanBtn} onPress={openScanner}>
             <Ionicons name="barcode-outline" size={22} color={Colors.primary} />
           </Pressable>
-          <Pressable style={styles.addBtn} onPress={() => router.push('/beer/add')}>
+          <Pressable
+            style={styles.addBtn}
+            onPress={() => router.push({ pathname: '/beer/add', params: { cellarId: activeCellarId } })}
+          >
             <Ionicons name="add" size={24} color={Colors.background} />
           </Pressable>
         </View>
       </View>
 
-      {/* Scanner modal */}
+      {/* Sélecteur de caves */}
+      <View style={styles.cellarScrollWrapper}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.cellarRow}
+        >
+          {cellars.map((cellar) => {
+            const count = entries.filter((e) => e.cellar_id === cellar.id).length;
+            const isActive = cellar.id === activeCellarId;
+            return (
+              <Pressable
+                key={cellar.id}
+                style={[styles.cellarChip, isActive && styles.cellarChipActive]}
+                onPress={() => setActiveCellarId(cellar.id)}
+                onLongPress={() => deleteCellar(cellar)}
+              >
+                <Text style={styles.cellarChipEmoji}>{cellar.emoji}</Text>
+                <Text style={[styles.cellarChipText, isActive && styles.cellarChipTextActive]}>
+                  {cellar.name}
+                </Text>
+                <Text style={[styles.cellarChipCount, isActive && styles.cellarChipCountActive]}>
+                  {count}
+                </Text>
+              </Pressable>
+            );
+          })}
+          <Pressable style={styles.cellarChipNew} onPress={() => setCreateModal(true)}>
+            <Ionicons name="add" size={16} color={Colors.primary} />
+            <Text style={styles.cellarChipNewText}>Nouvelle</Text>
+          </Pressable>
+        </ScrollView>
+      </View>
+
+      {/* Modal création cave */}
+      <Modal visible={createModal} transparent animationType="fade" onRequestClose={() => setCreateModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setCreateModal(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Nouvelle cave</Text>
+
+            {/* Emoji picker */}
+            <View style={styles.emojiGrid}>
+              {EMOJIS.map((e) => (
+                <Pressable
+                  key={e}
+                  style={[styles.emojiBtn, newEmoji === e && styles.emojiBtnActive]}
+                  onPress={() => setNewEmoji(e)}
+                >
+                  <Text style={styles.emojiText}>{e}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <TextInput
+              style={styles.modalInput}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="Nom de la cave…"
+              placeholderTextColor={Colors.textDim}
+              autoFocus
+            />
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => { setCreateModal(false); setNewName(''); }}>
+                <Text style={styles.modalCancelText}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmBtn, (!newName.trim() || creating) && { opacity: 0.4 }]}
+                onPress={createCellar}
+                disabled={!newName.trim() || creating}
+              >
+                <Text style={styles.modalConfirmText}>Créer</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Scanner */}
       <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
         <View style={{ flex: 1, backgroundColor: '#000' }}>
           <CameraView
@@ -184,6 +325,7 @@ export default function CellarScreen() {
         </View>
       </Modal>
 
+      {/* Recherche + filtres */}
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <Ionicons name="search" size={18} color={Colors.textMuted} />
@@ -224,50 +366,47 @@ export default function CellarScreen() {
             style={[styles.sortChip, sort === key && styles.sortChipActive]}
             onPress={() => setSort(key)}
           >
-            <Text style={[styles.sortText, sort === key && styles.sortTextActive]}>
-              {label}
-            </Text>
+            <Text style={[styles.sortText, sort === key && styles.sortTextActive]}>{label}</Text>
           </Pressable>
         ))}
       </View>
 
-      {loading ? (
-        <View style={styles.empty}>
-          <Text style={styles.emptyText}>Chargement…</Text>
-        </View>
-      ) : filtered.length === 0 ? (
-        <View style={styles.empty}>
-          <Ionicons name="beer-outline" size={64} color={Colors.textDim} />
-          <Text style={styles.emptyTitle}>
-            {entries.length === 0 ? 'Cave vide !' : 'Aucun résultat'}
-          </Text>
-          <Text style={styles.emptyText}>
-            {entries.length === 0
-              ? 'Scanne ta première bière ou ajoute-la manuellement.'
-              : 'Essaie un autre terme de recherche.'}
-          </Text>
-          {entries.length === 0 && (
-            <Pressable style={styles.emptyBtn} onPress={() => router.push('/beer/add')}>
-              <Text style={styles.emptyBtnText}>Ajouter une bière</Text>
-            </Pressable>
-          )}
-        </View>
-      ) : (
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <BeerCard entry={item} />}
-          contentContainerStyle={styles.list}
-          showsVerticalScrollIndicator={false}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onRefresh}
-              tintColor={Colors.primary}
-            />
-          }
-        />
-      )}
+      <View style={{ flex: 1 }}>
+        {loading ? (
+          <View style={styles.empty}>
+            <Text style={styles.emptyText}>Chargement…</Text>
+          </View>
+        ) : filtered.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="beer-outline" size={64} color={Colors.textDim} />
+            <Text style={styles.emptyTitle}>
+              {activeEntries.length === 0 ? 'Cave vide !' : 'Aucun résultat'}
+            </Text>
+            <Text style={styles.emptyText}>
+              {activeEntries.length === 0
+                ? 'Scanne ta première bière ou ajoute-la manuellement.'
+                : 'Essaie un autre terme de recherche.'}
+            </Text>
+            {activeEntries.length === 0 && (
+              <Pressable
+                style={styles.emptyBtn}
+                onPress={() => router.push({ pathname: '/beer/add', params: { cellarId: activeCellarId } })}
+              >
+                <Text style={styles.emptyBtnText}>Ajouter une bière</Text>
+              </Pressable>
+            )}
+          </View>
+        ) : (
+          <FlatList
+            data={filtered}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => <BeerCard entry={item} />}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
+          />
+        )}
+      </View>
     </SafeAreaView>
   );
 }
@@ -275,34 +414,80 @@ export default function CellarScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    paddingHorizontal: 20, paddingTop: 10, paddingBottom: 14,
   },
-  title: { fontSize: 28, fontWeight: '800', color: Colors.text },
-  subtitle: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
+  title: { fontSize: 26, fontWeight: '800', color: Colors.text },
+  subtitle: { fontSize: 13, color: Colors.textMuted, marginTop: 4 },
   headerBtns: { flexDirection: 'row', gap: 10, alignItems: 'center' },
   scanBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 44, height: 44, borderRadius: 22,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
   },
   addBtn: {
-    backgroundColor: Colors.primary,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: Colors.primary, width: 44, height: 44,
+    borderRadius: 22, alignItems: 'center', justifyContent: 'center',
   },
+  // Sélecteur de caves
+  cellarScrollWrapper: { flexShrink: 0 },
+  cellarRow: { paddingHorizontal: 20, paddingVertical: 8, gap: 10, alignItems: 'center' },
+  cellarChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 8,
+    paddingHorizontal: 16, height: 44, borderRadius: 22,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+  },
+  cellarChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  cellarChipEmoji: { fontSize: 18 },
+  cellarChipText: { fontSize: 14, fontWeight: '600', color: Colors.textMuted },
+  cellarChipTextActive: { color: Colors.background },
+  cellarChipCount: {
+    fontSize: 12, fontWeight: '700', color: Colors.textDim,
+    backgroundColor: Colors.surfaceLight, borderRadius: 10,
+    paddingHorizontal: 7, paddingVertical: 2,
+  },
+  cellarChipCountActive: { backgroundColor: 'rgba(255,255,255,0.25)', color: Colors.background },
+  cellarChipNew: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    paddingHorizontal: 14, height: 44, borderRadius: 22,
+    borderWidth: 1, borderColor: Colors.primary, borderStyle: 'dashed',
+  },
+  cellarChipNewText: { fontSize: 14, fontWeight: '600', color: Colors.primary },
+  // Modal
+  modalOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  modalCard: {
+    backgroundColor: Colors.surface, borderRadius: 16, padding: 24,
+    width: '100%', maxWidth: 360, borderWidth: 1, borderColor: Colors.border,
+  },
+  modalTitle: { fontSize: 18, fontWeight: '800', color: Colors.text, marginBottom: 16 },
+  emojiGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 },
+  emojiBtn: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  emojiBtnActive: { borderColor: Colors.primary, backgroundColor: Colors.surfaceLight },
+  emojiText: { fontSize: 22 },
+  modalInput: {
+    backgroundColor: Colors.background, borderRadius: 12, borderWidth: 1,
+    borderColor: Colors.border, paddingHorizontal: 16, paddingVertical: 12,
+    color: Colors.text, fontSize: 15, marginBottom: 20,
+  },
+  modalActions: { flexDirection: 'row', gap: 12 },
+  modalCancelBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center',
+    backgroundColor: Colors.surfaceLight, borderWidth: 1, borderColor: Colors.border,
+  },
+  modalCancelText: { color: Colors.textMuted, fontWeight: '600', fontSize: 14 },
+  modalConfirmBtn: {
+    flex: 1, paddingVertical: 12, borderRadius: 12,
+    backgroundColor: Colors.primary, alignItems: 'center',
+  },
+  modalConfirmText: { color: Colors.background, fontWeight: '700', fontSize: 14 },
+  // Scanner
   scannerOverlay: { flex: 1, alignItems: 'center', justifyContent: 'space-between', padding: 24 },
   scannerClose: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20, padding: 6 },
   scannerFrame: { width: 260, height: 260, position: 'relative' },
@@ -312,52 +497,35 @@ const styles = StyleSheet.create({
   cornerBL: { bottom: 0, left: 0, borderRightWidth: 0, borderTopWidth: 0, borderBottomLeftRadius: 4 },
   cornerBR: { bottom: 0, right: 0, borderLeftWidth: 0, borderTopWidth: 0, borderBottomRightRadius: 4 },
   scannerHint: { color: 'rgba(255,255,255,0.8)', fontSize: 14, textAlign: 'center' },
-  searchRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginBottom: 12 },
+  // Recherche / tri
+  searchRow: { flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginTop: 4, marginBottom: 12 },
   searchBox: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: Colors.surface,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    paddingHorizontal: 12,
-    gap: 8,
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: Colors.surface, borderRadius: 14, borderWidth: 1,
+    borderColor: Colors.border, paddingHorizontal: 14, gap: 8,
   },
-  searchInput: { flex: 1, color: Colors.text, fontSize: 14, paddingVertical: 10 },
+  searchInput: { flex: 1, color: Colors.text, fontSize: 15, paddingVertical: 13 },
   favFilter: {
-    width: 44,
-    height: 44,
-    borderRadius: 12,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
-    alignItems: 'center',
-    justifyContent: 'center',
+    width: 50, height: 50, borderRadius: 14,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
   },
   favFilterActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  sortRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 16 },
+  sortRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 20, marginBottom: 18 },
   sortChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    backgroundColor: Colors.surface,
-    borderWidth: 1,
-    borderColor: Colors.border,
+    paddingHorizontal: 16, paddingVertical: 9, borderRadius: 18,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
   },
   sortChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  sortText: { fontSize: 12, color: Colors.textMuted, fontWeight: '600' },
+  sortText: { fontSize: 13, color: Colors.textMuted, fontWeight: '600' },
   sortTextActive: { color: Colors.background },
   list: { paddingHorizontal: 20, paddingBottom: 20 },
   empty: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, padding: 40 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: Colors.text },
   emptyText: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
   emptyBtn: {
-    backgroundColor: Colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
-    marginTop: 8,
+    backgroundColor: Colors.primary, paddingHorizontal: 24,
+    paddingVertical: 12, borderRadius: 12, marginTop: 8,
   },
   emptyBtnText: { color: Colors.background, fontWeight: '700', fontSize: 15 },
 });

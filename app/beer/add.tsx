@@ -30,7 +30,7 @@ import { Beer, TasteTag } from '../../types';
 export default function AddBeerScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const params = useLocalSearchParams<{ beerId?: string; beerData?: string; barcode?: string }>();
+  const params = useLocalSearchParams<{ beerId?: string; beerData?: string; barcode?: string; cellarId?: string }>();
 
   const [beer, setBeer] = useState<Partial<Beer>>({});
   const [name, setName] = useState('');
@@ -144,16 +144,29 @@ export default function AddBeerScreen() {
         photoUrl = await uploadPhoto(photoUri, session.user.id);
       }
 
+      // Récupérer ou créer la cave cible
+      let cellarId = params.cellarId ?? null;
+      if (!cellarId) {
+        const { data: defaultCellar } = await supabase
+          .from('cellars')
+          .select('id')
+          .eq('user_id', session.user.id)
+          .eq('is_default', true)
+          .single();
+        cellarId = defaultCellar?.id ?? null;
+      }
+
       // Upsert dans la cave
       const { error: entryError } = await supabase.from('cellar_entries').upsert({
         user_id: session.user.id,
         beer_id: beerId,
+        cellar_id: cellarId,
         rating: rating || null,
         notes: notes.trim() || null,
         taste_tags: tasteTags,
         photo_url: photoUrl,
         quantity,
-      }, { onConflict: 'user_id,beer_id' });
+      }, { onConflict: 'user_id,beer_id,cellar_id' });
 
       if (entryError) {
         Alert.alert('Erreur', entryError.message);

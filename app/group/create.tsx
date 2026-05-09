@@ -43,7 +43,7 @@ export default function CreateGroupScreen() {
     setLoading(false);
 
     if (err || !data) {
-      setError('Impossible de créer le groupe.');
+      setError(err?.message ?? 'Impossible de créer le groupe.');
     } else {
       router.replace(`/group/${data.id}`);
     }

@@ -50,6 +50,7 @@ export default function GroupScreen() {
   const [beersLoading, setBeersLoading] = useState(false);
   const [editModal, setEditModal] = useState(false);
   const [editName, setEditName] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [editAvatarUri, setEditAvatarUri] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
   const [memberActionModal, setMemberActionModal] = useState(false);
@@ -281,6 +282,7 @@ export default function GroupScreen() {
 
   const openEditModal = () => {
     setEditName(group?.name ?? '');
+    setEditDescription(group?.description ?? '');
     setEditAvatarUri(null);
     setEditModal(true);
   };
@@ -310,7 +312,7 @@ export default function GroupScreen() {
 
     const { error } = await supabase
       .from('tasting_groups')
-      .update({ name: editName.trim(), avatar_url: avatarUrl })
+      .update({ name: editName.trim(), description: editDescription.trim() || null, avatar_url: avatarUrl })
       .eq('id', id);
 
     setEditSaving(false);
@@ -601,6 +603,22 @@ export default function GroupScreen() {
                 placeholderTextColor={Colors.textDim}
                 autoCapitalize="words"
                 maxLength={50}
+              />
+            </View>
+
+            {/* Description */}
+            <View style={[styles.modalSearchBox, styles.modalTextAreaBox]}>
+              <Ionicons name="text-outline" size={16} color={Colors.textMuted} style={{ marginTop: 2 }} />
+              <TextInput
+                style={[styles.modalInput, styles.modalTextArea]}
+                value={editDescription}
+                onChangeText={setEditDescription}
+                placeholder="Description (optionnelle)"
+                placeholderTextColor={Colors.textDim}
+                autoCapitalize="sentences"
+                maxLength={200}
+                multiline
+                numberOfLines={3}
               />
             </View>
 
@@ -1011,6 +1029,8 @@ const styles = StyleSheet.create({
   modalInput: {
     flex: 1, color: Colors.text, fontSize: 15, paddingVertical: 12,
   },
+  modalTextAreaBox: { alignItems: 'flex-start', paddingTop: 10 },
+  modalTextArea: { paddingVertical: 0, minHeight: 64, textAlignVertical: 'top' },
   suggestionsBox: {
     borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
     backgroundColor: Colors.background, marginBottom: 16, overflow: 'hidden',

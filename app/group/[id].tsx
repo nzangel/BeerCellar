@@ -343,7 +343,7 @@ export default function GroupScreen() {
         <View style={styles.headerRight}>
           {isAdmin && (
             <Pressable onPress={openEditModal} style={styles.headerBtn}>
-              <Ionicons name="pencil-outline" size={22} color={Colors.primary} />
+              <Ionicons name="create-outline" size={22} color={Colors.primary} />
             </Pressable>
           )}
           <Pressable onPress={leaveGroup} style={styles.headerBtn}>

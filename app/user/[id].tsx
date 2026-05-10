@@ -35,7 +35,7 @@ export default function FriendCellarScreen() {
     if (!id) return;
     Promise.all([
       supabase.from('profiles').select('*').eq('id', id).single(),
-      supabase.from('cellars').select('*').eq('user_id', id).order('created_at'),
+      supabase.from('cellars').select('*').eq('user_id', id).eq('is_public', true).order('created_at'),
       supabase.from('cellar_entries').select('*, beer:beers(*)').eq('user_id', id),
     ]).then(([{ data: p }, { data: c }, { data: e }]) => {
       if (p) setProfile(p as Profile);
@@ -179,10 +179,23 @@ export default function FriendCellarScreen() {
         ListEmptyComponent={
           !loading ? (
             <View style={styles.empty}>
-              <Ionicons name="beer-outline" size={64} color={Colors.textDim} />
+              <Ionicons
+                name={cellars.length === 0 ? 'lock-closed-outline' : 'beer-outline'}
+                size={64}
+                color={Colors.textDim}
+              />
               <Text style={styles.emptyTitle}>
-                {activeEntries.length === 0 ? 'Cave vide' : 'Aucun résultat'}
+                {cellars.length === 0
+                  ? 'Cave privée'
+                  : activeEntries.length === 0
+                  ? 'Cave vide'
+                  : 'Aucun résultat'}
               </Text>
+              {cellars.length === 0 && (
+                <Text style={styles.emptyHint}>
+                  Cet utilisateur n'a pas encore partagé de cave.
+                </Text>
+              )}
             </View>
           ) : null
         }
@@ -249,4 +262,5 @@ const styles = StyleSheet.create({
   list: { paddingHorizontal: 20, paddingBottom: 20 },
   empty: { alignItems: 'center', gap: 12, padding: 40 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
+  emptyHint: { fontSize: 13, color: Colors.textDim, textAlign: 'center', marginTop: 4 },
 });

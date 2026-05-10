@@ -104,7 +104,7 @@ export default function GroupScreen() {
     const memberIds = currentMembers.map((m) => m.user_id);
     const { data } = await supabase
       .from('cellar_entries')
-      .select('*, beer:beers(*), cellar:cellars(name, emoji)')
+      .select('*, beer:beers(*), cellar:cellars(name, emoji, is_public)')
       .in('user_id', memberIds)
       .order('added_at', { ascending: false });
 
@@ -116,13 +116,15 @@ export default function GroupScreen() {
         ])
       );
       setGroupBeers(
-        (data as any[]).map((entry) => ({
-          ...entry,
-          ownerUsername: profileMap.get(entry.user_id)?.username ?? '?',
-          ownerAvatar: profileMap.get(entry.user_id)?.avatar_url ?? null,
-          cellarName: entry.cellar?.name ?? null,
-          cellarEmoji: entry.cellar?.emoji ?? null,
-        }))
+        (data as any[])
+          .filter((entry) => entry.cellar?.is_public === true)
+          .map((entry) => ({
+            ...entry,
+            ownerUsername: profileMap.get(entry.user_id)?.username ?? '?',
+            ownerAvatar: profileMap.get(entry.user_id)?.avatar_url ?? null,
+            cellarName: entry.cellar?.name ?? null,
+            cellarEmoji: entry.cellar?.emoji ?? null,
+          }))
       );
       setFilterMemberId(null);
     }

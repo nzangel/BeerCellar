@@ -45,6 +45,14 @@ export default function CellarScreen() {
   const [newEmoji, setNewEmoji] = useState('🍺');
   const [creating, setCreating] = useState(false);
 
+  // Édition de cave (renommer / partager / supprimer)
+  const [editModal, setEditModal] = useState(false);
+  const [editingCellar, setEditingCellar] = useState<Cellar | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editEmoji, setEditEmoji] = useState('🍺');
+  const [editIsPublic, setEditIsPublic] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+
   // Scanner
   const [scannerVisible, setScannerVisible] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -106,26 +114,60 @@ export default function CellarScreen() {
     }
   };
 
-  const deleteCellar = (cellar: Cellar) => {
-    if (cellar.is_default) {
-      Alert.alert('Impossible', 'La cave par défaut ne peut pas être supprimée.');
-      return;
+  const openEditModal = (cellar: Cellar) => {
+    setEditingCellar(cellar);
+    setEditName(cellar.name);
+    setEditEmoji(cellar.emoji);
+    setEditIsPublic(cellar.is_public);
+    setEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    setEditModal(false);
+    setEditingCellar(null);
+    setEditName('');
+    setEditEmoji('🍺');
+    setEditIsPublic(false);
+  };
+
+  const saveCellar = async () => {
+    if (!editingCellar || !editName.trim()) return;
+    setEditSaving(true);
+    const { error } = await supabase
+      .from('cellars')
+      .update({ name: editName.trim(), emoji: editEmoji, is_public: editIsPublic })
+      .eq('id', editingCellar.id);
+    setEditSaving(false);
+    if (!error) {
+      setCellars((prev) =>
+        prev.map((c) =>
+          c.id === editingCellar.id
+            ? { ...c, name: editName.trim(), emoji: editEmoji, is_public: editIsPublic }
+            : c
+        )
+      );
+      closeEditModal();
     }
-    const count = entries.filter((e) => e.cellar_id === cellar.id).length;
+  };
+
+  const confirmDeleteCellar = () => {
+    if (!editingCellar) return;
+    const count = entries.filter((e) => e.cellar_id === editingCellar.id).length;
     Alert.alert(
       'Supprimer la cave',
-      `Supprimer "${cellar.emoji} ${cellar.name}" ?${count > 0 ? `\n\nLes ${count} bières qu'elle contient seront aussi supprimées.` : ''}`,
+      `Supprimer "${editingCellar.emoji} ${editingCellar.name}" ?${count > 0 ? `\n\nLes ${count} bière${count > 1 ? 's' : ''} qu'elle contient seront aussi supprimées.` : ''}`,
       [
         { text: 'Annuler', style: 'cancel' },
         {
           text: 'Supprimer',
           style: 'destructive',
           onPress: async () => {
-            await supabase.from('cellars').delete().eq('id', cellar.id);
-            const remaining = cellars.filter((c) => c.id !== cellar.id);
+            await supabase.from('cellars').delete().eq('id', editingCellar.id);
+            const remaining = cellars.filter((c) => c.id !== editingCellar.id);
             setCellars(remaining);
-            setEntries((prev) => prev.filter((e) => e.cellar_id !== cellar.id));
-            if (activeCellarId === cellar.id) setActiveCellarId(remaining[0]?.id ?? null);
+            setEntries((prev) => prev.filter((e) => e.cellar_id !== editingCellar.id));
+            if (activeCellarId === editingCellar.id) setActiveCellarId(remaining[0]?.id ?? null);
+            closeEditModal();
           },
         },
       ]
@@ -238,7 +280,7 @@ export default function CellarScreen() {
                 key={cellar.id}
                 style={[styles.cellarChip, isActive && styles.cellarChipActive]}
                 onPress={() => setActiveCellarId(cellar.id)}
-                onLongPress={() => deleteCellar(cellar)}
+                onLongPress={() => openEditModal(cellar)}
               >
                 <Text style={styles.cellarChipEmoji}>{cellar.emoji}</Text>
                 <Text style={[styles.cellarChipText, isActive && styles.cellarChipTextActive]}>
@@ -247,6 +289,13 @@ export default function CellarScreen() {
                 <Text style={[styles.cellarChipCount, isActive && styles.cellarChipCountActive]}>
                   {count}
                 </Text>
+                {!cellar.is_public && (
+                  <Ionicons
+                    name="lock-closed"
+                    size={11}
+                    color={isActive ? 'rgba(255,255,255,0.6)' : Colors.textDim}
+                  />
+                )}
               </Pressable>
             );
           })}
@@ -297,6 +346,81 @@ export default function CellarScreen() {
                 <Text style={styles.modalConfirmText}>Créer</Text>
               </Pressable>
             </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Modal édition cave (renommer / supprimer) */}
+      <Modal visible={editModal} transparent animationType="fade" onRequestClose={closeEditModal}>
+        <Pressable style={styles.modalOverlay} onPress={closeEditModal}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Modifier la cave</Text>
+
+            {/* Emoji picker */}
+            <View style={styles.emojiGrid}>
+              {EMOJIS.map((e) => (
+                <Pressable
+                  key={e}
+                  style={[styles.emojiBtn, editEmoji === e && styles.emojiBtnActive]}
+                  onPress={() => setEditEmoji(e)}
+                >
+                  <Text style={styles.emojiText}>{e}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <TextInput
+              style={styles.modalInput}
+              value={editName}
+              onChangeText={setEditName}
+              placeholder="Nom de la cave…"
+              placeholderTextColor={Colors.textDim}
+              autoFocus
+            />
+
+            {/* Toggle visibilité */}
+            <Pressable
+              style={[styles.visibilityToggle, editIsPublic && styles.visibilityTogglePublic]}
+              onPress={() => setEditIsPublic((v) => !v)}
+            >
+              <Ionicons
+                name={editIsPublic ? 'eye-outline' : 'eye-off-outline'}
+                size={18}
+                color={editIsPublic ? Colors.primary : Colors.textMuted}
+              />
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.visibilityLabel, editIsPublic && styles.visibilityLabelPublic]}>
+                  {editIsPublic ? 'Cave partagée' : 'Cave privée'}
+                </Text>
+                <Text style={styles.visibilityHint}>
+                  {editIsPublic
+                    ? 'Visible par tes amis et dans les groupes'
+                    : 'Visible par toi uniquement'}
+                </Text>
+              </View>
+              <View style={[styles.visibilityDot, editIsPublic && styles.visibilityDotPublic]} />
+            </Pressable>
+
+            <View style={styles.modalActions}>
+              <Pressable style={styles.modalCancelBtn} onPress={closeEditModal}>
+                <Text style={styles.modalCancelText}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmBtn, (!editName.trim() || editSaving) && { opacity: 0.4 }]}
+                onPress={saveCellar}
+                disabled={!editName.trim() || editSaving}
+              >
+                <Text style={styles.modalConfirmText}>Enregistrer</Text>
+              </Pressable>
+            </View>
+
+            {/* Suppression — masquée pour la cave par défaut */}
+            {editingCellar && !editingCellar.is_default && (
+              <Pressable style={styles.deleteBtn} onPress={confirmDeleteCellar}>
+                <Ionicons name="trash-outline" size={16} color={Colors.error} />
+                <Text style={styles.deleteBtnText}>Supprimer cette cave</Text>
+              </Pressable>
+            )}
           </Pressable>
         </Pressable>
       </Modal>
@@ -487,6 +611,27 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.primary, alignItems: 'center',
   },
   modalConfirmText: { color: Colors.background, fontWeight: '700', fontSize: 14 },
+  visibilityToggle: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: Colors.background, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 14, paddingVertical: 12, marginBottom: 16,
+  },
+  visibilityTogglePublic: { borderColor: Colors.primary },
+  visibilityLabel: { fontSize: 14, fontWeight: '600', color: Colors.textMuted },
+  visibilityLabelPublic: { color: Colors.primary },
+  visibilityHint: { fontSize: 12, color: Colors.textDim, marginTop: 1 },
+  visibilityDot: {
+    width: 10, height: 10, borderRadius: 5,
+    backgroundColor: Colors.textDim,
+  },
+  visibilityDotPublic: { backgroundColor: Colors.primary },
+  deleteBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginTop: 16, paddingVertical: 12, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.error,
+  },
+  deleteBtnText: { color: Colors.error, fontWeight: '600', fontSize: 14 },
   // Scanner
   scannerOverlay: { flex: 1, alignItems: 'center', justifyContent: 'space-between', padding: 24 },
   scannerClose: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20, padding: 6 },

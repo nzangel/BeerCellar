@@ -228,6 +228,38 @@ export default function GroupScreen() {
     ]);
   };
 
+  const toggleAdmin = (userId: string, username: string, currentRole: string) => {
+    const isPromoting = currentRole !== 'admin';
+    const adminCount = members.filter((m) => m.role === 'admin').length;
+
+    if (!isPromoting && adminCount <= 1) {
+      Alert.alert('Action impossible', 'Il doit rester au moins un admin dans le groupe.');
+      return;
+    }
+
+    const newRole = isPromoting ? 'admin' : 'member';
+    const title = isPromoting ? `Nommer admin` : `Retirer le rôle admin`;
+    const message = isPromoting
+      ? `Nommer @${username} administrateur du groupe ?`
+      : `Retirer le rôle admin à @${username} ?`;
+
+    Alert.alert(title, message, [
+      { text: 'Annuler', style: 'cancel' },
+      {
+        text: isPromoting ? 'Nommer admin' : 'Rétrograder',
+        onPress: async () => {
+          const { error } = await supabase
+            .from('group_members')
+            .update({ role: newRole })
+            .eq('group_id', id)
+            .eq('user_id', userId);
+          if (error) Alert.alert('Erreur', error.message);
+          else fetchAll();
+        },
+      },
+    ]);
+  };
+
   const leaveGroup = () => {
     Alert.alert('Quitter le groupe', `Quitter "${group?.name}" ?`, [
       { text: 'Annuler', style: 'cancel' },
@@ -617,12 +649,24 @@ export default function GroupScreen() {
                 <Ionicons name="wine-outline" size={18} color={Colors.primary} />
               </Pressable>
               {isAdmin && item.user_id !== session?.user.id && (
-                <Pressable
-                  style={[styles.actionBtn, styles.actionBtnDanger]}
-                  onPress={() => removeMember(item.user_id, (item.profile as any)?.username ?? '')}
-                >
-                  <Ionicons name="person-remove-outline" size={18} color={Colors.error} />
-                </Pressable>
+                <>
+                  <Pressable
+                    style={[styles.actionBtn, item.role === 'admin' && styles.actionBtnAdmin]}
+                    onPress={() => toggleAdmin(item.user_id, (item.profile as any)?.username ?? '', item.role)}
+                  >
+                    <Ionicons
+                      name={item.role === 'admin' ? 'shield' : 'shield-outline'}
+                      size={18}
+                      color={item.role === 'admin' ? Colors.primary : Colors.textMuted}
+                    />
+                  </Pressable>
+                  <Pressable
+                    style={[styles.actionBtn, styles.actionBtnDanger]}
+                    onPress={() => removeMember(item.user_id, (item.profile as any)?.username ?? '')}
+                  >
+                    <Ionicons name="person-remove-outline" size={18} color={Colors.error} />
+                  </Pressable>
+                </>
               )}
             </View>
           )}
@@ -770,6 +814,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   actionBtnDanger: { borderColor: Colors.error },
+  actionBtnAdmin: { borderColor: Colors.primary },
   tabRow: {
     flexDirection: 'row', marginHorizontal: 20, marginBottom: 8, gap: 8,
   },

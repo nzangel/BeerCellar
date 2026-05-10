@@ -52,6 +52,8 @@ export default function GroupScreen() {
   const [editName, setEditName] = useState('');
   const [editAvatarUri, setEditAvatarUri] = useState<string | null>(null);
   const [editSaving, setEditSaving] = useState(false);
+  const [memberActionModal, setMemberActionModal] = useState(false);
+  const [selectedMember, setSelectedMember] = useState<GroupMember | null>(null);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scanResult, setScanResult] = useState<
     { found: true; entry: CellarEntry & { ownerUsername: string; ownerAvatar: string | null; cellarName: string | null; cellarEmoji: string | null } } |
@@ -624,6 +626,94 @@ export default function GroupScreen() {
         </Pressable>
       </Modal>
 
+      {/* Modal actions membre (appui long) */}
+      <Modal
+        visible={memberActionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMemberActionModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setMemberActionModal(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {/* En-tête membre */}
+            <View style={styles.memberActionHeader}>
+              <Avatar
+                uri={(selectedMember?.profile as any)?.avatar_url}
+                name={(selectedMember?.profile as any)?.username}
+                size={48}
+              />
+              <View>
+                <Text style={styles.memberActionName}>@{(selectedMember?.profile as any)?.username}</Text>
+                <Text style={styles.memberActionRole}>
+                  {selectedMember?.role === 'admin' ? '🛡️ Administrateur' : 'Membre'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.memberActionDivider} />
+
+            {/* Voir la cave */}
+            <Pressable
+              style={styles.memberActionBtn}
+              onPress={() => {
+                setMemberActionModal(false);
+                router.push(`/user/${selectedMember?.user_id}`);
+              }}
+            >
+              <Ionicons name="wine-outline" size={20} color={Colors.primary} />
+              <Text style={styles.memberActionBtnText}>Voir sa cave</Text>
+            </Pressable>
+
+            {/* Promouvoir / Rétrograder */}
+            <Pressable
+              style={styles.memberActionBtn}
+              onPress={() => {
+                setMemberActionModal(false);
+                if (selectedMember) {
+                  toggleAdmin(
+                    selectedMember.user_id,
+                    (selectedMember.profile as any)?.username ?? '',
+                    selectedMember.role,
+                  );
+                }
+              }}
+            >
+              <Ionicons
+                name={selectedMember?.role === 'admin' ? 'shield-outline' : 'shield'}
+                size={20}
+                color={Colors.primary}
+              />
+              <Text style={styles.memberActionBtnText}>
+                {selectedMember?.role === 'admin' ? 'Retirer le rôle admin' : 'Nommer administrateur'}
+              </Text>
+            </Pressable>
+
+            {/* Retirer du groupe */}
+            <Pressable
+              style={[styles.memberActionBtn, styles.memberActionBtnDanger]}
+              onPress={() => {
+                setMemberActionModal(false);
+                if (selectedMember) {
+                  removeMember(
+                    selectedMember.user_id,
+                    (selectedMember.profile as any)?.username ?? '',
+                  );
+                }
+              }}
+            >
+              <Ionicons name="person-remove-outline" size={20} color={Colors.error} />
+              <Text style={[styles.memberActionBtnText, styles.memberActionBtnDangerText]}>
+                Retirer du groupe
+              </Text>
+            </Pressable>
+
+            <Pressable style={styles.modalCancelBtn} onPress={() => setMemberActionModal(false)}>
+              <Text style={styles.modalCancelText}>Annuler</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {tab === 'membres' ? (
         /* Liste des membres */
         <Animated.FlatList
@@ -632,7 +722,17 @@ export default function GroupScreen() {
           onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], { useNativeDriver: false })}
           scrollEventThrottle={16}
           renderItem={({ item }) => (
-            <View style={styles.memberRow}>
+            <Pressable
+              style={styles.memberRow}
+              onPress={() => router.push(`/user/${item.user_id}`)}
+              onLongPress={() => {
+                if (isAdmin && item.user_id !== session?.user.id) {
+                  setSelectedMember(item);
+                  setMemberActionModal(true);
+                }
+              }}
+              delayLongPress={350}
+            >
               <Avatar uri={(item.profile as any)?.avatar_url} name={(item.profile as any)?.username} size={44} />
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>@{(item.profile as any)?.username}</Text>
@@ -642,33 +742,8 @@ export default function GroupScreen() {
                   </View>
                 )}
               </View>
-              <Pressable
-                style={styles.actionBtn}
-                onPress={() => router.push(`/user/${item.user_id}`)}
-              >
-                <Ionicons name="wine-outline" size={18} color={Colors.primary} />
-              </Pressable>
-              {isAdmin && item.user_id !== session?.user.id && (
-                <>
-                  <Pressable
-                    style={[styles.actionBtn, item.role === 'admin' && styles.actionBtnAdmin]}
-                    onPress={() => toggleAdmin(item.user_id, (item.profile as any)?.username ?? '', item.role)}
-                  >
-                    <Ionicons
-                      name={item.role === 'admin' ? 'shield' : 'shield-outline'}
-                      size={18}
-                      color={item.role === 'admin' ? Colors.primary : Colors.textMuted}
-                    />
-                  </Pressable>
-                  <Pressable
-                    style={[styles.actionBtn, styles.actionBtnDanger]}
-                    onPress={() => removeMember(item.user_id, (item.profile as any)?.username ?? '')}
-                  >
-                    <Ionicons name="person-remove-outline" size={18} color={Colors.error} />
-                  </Pressable>
-                </>
-              )}
-            </View>
+              <Ionicons name="chevron-forward" size={16} color={Colors.textDim} />
+            </Pressable>
           )}
           ListHeaderComponent={
             isAdmin ? (
@@ -815,6 +890,18 @@ const styles = StyleSheet.create({
   },
   actionBtnDanger: { borderColor: Colors.error },
   actionBtnAdmin: { borderColor: Colors.primary },
+  memberActionHeader: { flexDirection: 'row', alignItems: 'center', gap: 14, marginBottom: 16 },
+  memberActionName: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  memberActionRole: { fontSize: 13, color: Colors.textMuted, marginTop: 2 },
+  memberActionDivider: { height: 1, backgroundColor: Colors.border, marginBottom: 12 },
+  memberActionBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 14, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  memberActionBtnText: { fontSize: 15, fontWeight: '600', color: Colors.text },
+  memberActionBtnDanger: { borderBottomWidth: 0, marginTop: 4 },
+  memberActionBtnDangerText: { color: Colors.error },
   tabRow: {
     flexDirection: 'row', marginHorizontal: 20, marginBottom: 8, gap: 8,
   },

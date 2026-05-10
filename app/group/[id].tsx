@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as ImagePicker from 'expo-image-picker';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import {
@@ -20,6 +22,7 @@ import Avatar from '../../components/Avatar';
 import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
+import { uploadImage } from '../../lib/storage';
 import BeerCard from '../../components/BeerCard';
 import { CellarEntry, GroupMember, TastingGroup } from '../../types';
 
@@ -45,6 +48,10 @@ export default function GroupScreen() {
   })[]>([]);
   const [filterMemberId, setFilterMemberId] = useState<string | null>(null);
   const [beersLoading, setBeersLoading] = useState(false);
+  const [editModal, setEditModal] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editAvatarUri, setEditAvatarUri] = useState<string | null>(null);
+  const [editSaving, setEditSaving] = useState(false);
   const [scannerVisible, setScannerVisible] = useState(false);
   const [scanResult, setScanResult] = useState<
     { found: true; entry: CellarEntry & { ownerUsername: string; ownerAvatar: string | null; cellarName: string | null; cellarEmoji: string | null } } |
@@ -238,6 +245,49 @@ export default function GroupScreen() {
     ]);
   };
 
+  const openEditModal = () => {
+    setEditName(group?.name ?? '');
+    setEditAvatarUri(null);
+    setEditModal(true);
+  };
+
+  const pickGroupAvatar = async () => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: 'images',
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (!result.canceled && result.assets[0]) {
+      setEditAvatarUri(result.assets[0].uri);
+    }
+  };
+
+  const saveGroup = async () => {
+    if (!editName.trim()) return;
+    setEditSaving(true);
+
+    let avatarUrl = group?.avatar_url ?? null;
+    if (editAvatarUri) {
+      const { url, error } = await uploadImage(editAvatarUri, 'avatars', `groups/${id}/avatar`);
+      if (error) Alert.alert('Erreur upload image', error);
+      if (url) avatarUrl = url;
+    }
+
+    const { error } = await supabase
+      .from('tasting_groups')
+      .update({ name: editName.trim(), avatar_url: avatarUrl })
+      .eq('id', id);
+
+    setEditSaving(false);
+    if (error) {
+      Alert.alert('Erreur', error.message);
+    } else {
+      setEditModal(false);
+      fetchAll();
+    }
+  };
+
   const filteredGroupBeers = filterMemberId
     ? groupBeers.filter((e) => e.user_id === filterMemberId)
     : groupBeers;
@@ -256,9 +306,16 @@ export default function GroupScreen() {
         <Pressable onPress={() => router.back()}>
           <Ionicons name="arrow-back" size={24} color={Colors.text} />
         </Pressable>
-        <Pressable onPress={leaveGroup}>
-          <Ionicons name="exit-outline" size={24} color={Colors.error} />
-        </Pressable>
+        <View style={styles.headerRight}>
+          {isAdmin && (
+            <Pressable onPress={openEditModal} style={styles.headerBtn}>
+              <Ionicons name="pencil-outline" size={22} color={Colors.primary} />
+            </Pressable>
+          )}
+          <Pressable onPress={leaveGroup} style={styles.headerBtn}>
+            <Ionicons name="exit-outline" size={24} color={Colors.error} />
+          </Pressable>
+        </View>
       </View>
 
       {/* Group hero — se rétracte au scroll */}
@@ -470,6 +527,71 @@ export default function GroupScreen() {
         </Pressable>
       </Modal>
 
+      {/* Modal édition du groupe */}
+      <Modal
+        visible={editModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setEditModal(false)}
+      >
+        <Pressable style={styles.modalOverlay} onPress={() => setEditModal(false)}>
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <Text style={styles.modalTitle}>Modifier le groupe</Text>
+
+            {/* Avatar */}
+            <Pressable style={styles.editAvatarWrapper} onPress={pickGroupAvatar}>
+              {editAvatarUri ?? group?.avatar_url ? (
+                <Image
+                  source={{ uri: editAvatarUri ?? group?.avatar_url ?? '' }}
+                  style={styles.editAvatar}
+                  contentFit="cover"
+                />
+              ) : (
+                <View style={styles.editAvatarPlaceholder}>
+                  <Ionicons name="people" size={36} color={Colors.textDim} />
+                </View>
+              )}
+              <View style={styles.editAvatarOverlay}>
+                <Ionicons name="camera" size={20} color="#fff" />
+              </View>
+            </Pressable>
+
+            {/* Nom */}
+            <View style={styles.modalSearchBox}>
+              <Ionicons name="people-outline" size={16} color={Colors.textMuted} />
+              <TextInput
+                style={styles.modalInput}
+                value={editName}
+                onChangeText={setEditName}
+                placeholder="Nom du groupe"
+                placeholderTextColor={Colors.textDim}
+                autoCapitalize="words"
+                maxLength={50}
+              />
+            </View>
+
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalCancelBtn}
+                onPress={() => setEditModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmBtn, (!editName.trim() || editSaving) && styles.modalConfirmDisabled]}
+                onPress={saveGroup}
+                disabled={!editName.trim() || editSaving}
+              >
+                {editSaving
+                  ? <ActivityIndicator size="small" color={Colors.background} />
+                  : <Text style={styles.modalConfirmText}>Enregistrer</Text>
+                }
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {tab === 'membres' ? (
         /* Liste des membres */
         <Animated.FlatList
@@ -606,6 +728,19 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
     paddingHorizontal: 20, paddingVertical: 12,
+  },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  headerBtn: { padding: 4 },
+  editAvatarWrapper: { alignSelf: 'center', marginBottom: 20, position: 'relative' },
+  editAvatar: { width: 84, height: 84, borderRadius: 42 },
+  editAvatarPlaceholder: {
+    width: 84, height: 84, borderRadius: 42,
+    backgroundColor: Colors.surfaceLight, borderWidth: 2, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  editAvatarOverlay: {
+    ...StyleSheet.absoluteFillObject, borderRadius: 42,
+    backgroundColor: 'rgba(0,0,0,0.40)', alignItems: 'center', justifyContent: 'center',
   },
   groupHero: { alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, gap: 6 },
   groupName: { fontSize: 22, fontWeight: '800', color: Colors.text, textAlign: 'center' },

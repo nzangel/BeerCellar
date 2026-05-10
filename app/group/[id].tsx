@@ -76,8 +76,9 @@ export default function GroupScreen() {
     ]);
 
     if (g) setGroup(g as TastingGroup);
+    const fetchedMembers = (m ?? []) as GroupMember[];
     if (m) {
-      setMembers(m as GroupMember[]);
+      setMembers(fetchedMembers);
       setIsAdmin(m.some((mem: any) => mem.user_id === session?.user.id && mem.role === 'admin'));
     }
 
@@ -102,6 +103,8 @@ export default function GroupScreen() {
     }
 
     setLoading(false);
+    // Charger les bières en arrière-plan pour que le compteur soit disponible dès le départ
+    fetchGroupBeers(fetchedMembers);
   };
 
   const fetchGroupBeers = async (currentMembers: GroupMember[]) => {
@@ -140,9 +143,6 @@ export default function GroupScreen() {
 
   useEffect(() => {
     scrollY.setValue(0);
-    if (tab === 'bieres' && groupBeers.length === 0 && members.length > 0) {
-      fetchGroupBeers(members);
-    }
   }, [tab]);
 
   const openScanner = async () => {

@@ -3,7 +3,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { uploadImage } from '../../lib/storage';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -29,6 +29,7 @@ export default function BeerDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { session } = useAuth();
 
+  const scrollRef = useRef<ScrollView>(null);
   const [entry, setEntry] = useState<CellarEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -194,8 +195,8 @@ export default function BeerDetailScreen() {
         </View>
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView showsVerticalScrollIndicator={false}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={Platform.OS === 'android' ? 0 : 0}>
+        <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Hero image */}
           {displayPhoto ? (
             <Image source={{ uri: displayPhoto }} style={styles.heroImage} contentFit="cover" />
@@ -271,6 +272,7 @@ export default function BeerDetailScreen() {
                   placeholderTextColor={Colors.textDim}
                   multiline
                   numberOfLines={4}
+                  onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150)}
                 />
               ) : (
                 <Text style={notes ? styles.notesText : styles.emptyText}>

@@ -49,6 +49,7 @@ export default function AddBeerScreen() {
   const [scannerLoading, setScannerLoading] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanCooldown = useRef(false);
+  const scrollRef = useRef<ScrollView>(null);
 
   useEffect(() => {
     async function init() {
@@ -294,9 +295,9 @@ export default function AddBeerScreen() {
 
       <KeyboardAvoidingView
         style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
-        <ScrollView contentContainerStyle={styles.form} showsVerticalScrollIndicator={false}>
+        <ScrollView ref={scrollRef} contentContainerStyle={styles.form} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Photo */}
           <View style={styles.photoSection}>
             {photoUri || beer.image_url ? (
@@ -398,6 +399,7 @@ export default function AddBeerScreen() {
             placeholderTextColor={Colors.textDim}
             multiline
             numberOfLines={3}
+            onFocus={() => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150)}
           />
 
           {/* Quantité */}

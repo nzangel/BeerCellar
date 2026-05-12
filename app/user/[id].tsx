@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useState } from 'react';
 import {
   FlatList,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -30,6 +31,7 @@ export default function FriendCellarScreen() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortOption>('date');
+  const [avatarLightbox, setAvatarLightbox] = useState(false);
 
   useEffect(() => {
     if (!id) return;
@@ -89,7 +91,9 @@ export default function FriendCellarScreen() {
             {/* Profile card */}
             <View style={styles.profileCard}>
               {profile?.avatar_url ? (
-                <Image source={{ uri: profile.avatar_url }} style={styles.avatar} contentFit="cover" />
+                <Pressable onPress={() => setAvatarLightbox(true)}>
+                  <Image source={{ uri: profile.avatar_url }} style={styles.avatar} contentFit="cover" />
+                </Pressable>
               ) : (
                 <View style={styles.avatarPlaceholder}>
                   <Ionicons name="person" size={28} color={Colors.textDim} />
@@ -200,6 +204,18 @@ export default function FriendCellarScreen() {
           ) : null
         }
       />
+
+      {/* Avatar lightbox */}
+      {profile?.avatar_url && (
+        <Modal visible={avatarLightbox} transparent animationType="fade" onRequestClose={() => setAvatarLightbox(false)}>
+          <Pressable style={styles.lightboxOverlay} onPress={() => setAvatarLightbox(false)}>
+            <Image source={{ uri: profile.avatar_url }} style={styles.lightboxImage} contentFit="contain" />
+            <Pressable style={styles.lightboxClose} onPress={() => setAvatarLightbox(false)}>
+              <Ionicons name="close" size={28} color="#fff" />
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
     </SafeAreaView>
   );
 }
@@ -263,4 +279,14 @@ const styles = StyleSheet.create({
   empty: { alignItems: 'center', gap: 12, padding: 40 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: Colors.text },
   emptyHint: { fontSize: 13, color: Colors.textDim, textAlign: 'center', marginTop: 4 },
+  lightboxOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.92)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  lightboxImage: { width: '100%', height: '80%' },
+  lightboxClose: {
+    position: 'absolute', top: 50, right: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20,
+    padding: 6,
+  },
 });

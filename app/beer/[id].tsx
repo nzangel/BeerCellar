@@ -37,6 +37,7 @@ export default function BeerDetailScreen() {
 
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState('');
+  const [style, setStyle] = useState('');
   const [tasteTags, setTasteTags] = useState<TasteTag[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -57,6 +58,7 @@ export default function BeerDetailScreen() {
       setEntry(data as CellarEntry);
       setRating(data.rating ?? 0);
       setNotes(data.notes ?? '');
+      setStyle((data as any).beer?.style ?? '');
       setTasteTags(data.taste_tags ?? []);
       setQuantity(data.quantity ?? 1);
       setIsFavorite(data.is_favorite ?? false);
@@ -79,6 +81,11 @@ export default function BeerDetailScreen() {
     if (photoUri) {
       const uploaded = await uploadPhoto(photoUri);
       if (uploaded) photoUrl = uploaded;
+    }
+
+    // Mise à jour du style dans la table beers
+    if (beer?.id && style.trim() !== (beer.style ?? '')) {
+      await supabase.from('beers').update({ style: style.trim() || null }).eq('id', beer.id);
     }
 
     const { error: updateError } = await supabase.from('cellar_entries').update({
@@ -225,12 +232,23 @@ export default function BeerDetailScreen() {
             <View style={styles.beerInfo}>
               <Text style={styles.beerName}>{beer?.name}</Text>
               {beer?.brewery && <Text style={styles.brewery}>{beer.brewery}</Text>}
-              <View style={styles.metaRow}>
-                {beer?.style && <View style={styles.badge}><Text style={styles.badgeText}>{beer.style}</Text></View>}
-                {beer?.country && <View style={styles.badge}><Text style={styles.badgeText}>🌍 {beer.country}</Text></View>}
-                {beer?.abv != null && <Text style={styles.abv}>{beer.abv}% ABV</Text>}
-                {beer?.ibu != null && <Text style={styles.abv}>{beer.ibu} IBU</Text>}
-              </View>
+              {editing ? (
+                <TextInput
+                  style={[styles.input, styles.styleInput]}
+                  value={style}
+                  onChangeText={setStyle}
+                  placeholder="Style (ex: IPA, Stout, Lager…)"
+                  placeholderTextColor={Colors.textDim}
+                  autoCapitalize="words"
+                />
+              ) : (
+                <View style={styles.metaRow}>
+                  {beer?.style && <View style={styles.badge}><Text style={styles.badgeText}>{beer.style}</Text></View>}
+                  {beer?.country && <View style={styles.badge}><Text style={styles.badgeText}>🌍 {beer.country}</Text></View>}
+                  {beer?.abv != null && <Text style={styles.abv}>{beer.abv}% ABV</Text>}
+                  {beer?.ibu != null && <Text style={styles.abv}>{beer.ibu} IBU</Text>}
+                </View>
+              )}
               {beer?.description && (
                 <Text style={styles.beerDescription}>{beer.description}</Text>
               )}
@@ -394,6 +412,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   textarea: { minHeight: 100, textAlignVertical: 'top' },
+  styleInput: { marginTop: 4, marginBottom: 0 },
   quantityRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   qtyBtn: {
     width: 44, height: 44, borderRadius: 22,

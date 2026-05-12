@@ -3,6 +3,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter, useFocusEffect } from 'expo-router';
 import React, { useCallback, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -57,6 +58,9 @@ export default function CellarScreen() {
   const [scannerVisible, setScannerVisible] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const scanCooldown = useRef(false);
+  const [newBeerModal, setNewBeerModal] = useState(false);
+  const [pendingBarcode, setPendingBarcode] = useState<string | null>(null);
+  const [addingBeer, setAddingBeer] = useState(false);
 
   const fetchAll = useCallback(async () => {
     if (!session) return;
@@ -208,7 +212,7 @@ export default function CellarScreen() {
     setScannerVisible(true);
   };
 
-  const handleScanBarcode = async ({ data: barcode }: { data: string }) => {
+  const handleScanBarcode = ({ data: barcode }: { data: string }) => {
     if (scanCooldown.current) return;
     scanCooldown.current = true;
     setScannerVisible(false);
@@ -216,28 +220,30 @@ export default function CellarScreen() {
     const found = activeEntries.find((e) => e.beer?.barcode === barcode);
     if (found) { router.push(`/beer/${found.id}`); return; }
 
-    const lookupBeer = async () => {
-      const { data: globalBeer } = await supabase.from('beers').select('*').eq('barcode', barcode).maybeSingle();
-      if (globalBeer) return { beerId: globalBeer.id, beerData: null };
+    setPendingBarcode(barcode);
+    setNewBeerModal(true);
+  };
+
+  const confirmAddBeer = async () => {
+    if (!pendingBarcode) return;
+    setAddingBeer(true);
+    const barcode = pendingBarcode;
+
+    const { data: globalBeer } = await supabase.from('beers').select('*').eq('barcode', barcode).maybeSingle();
+    const params: any = { cellarId: activeCellarId };
+    if (globalBeer) {
+      params.beerId = globalBeer.id;
+    } else {
       const { lookupBeerByBarcode } = await import('../../lib/beerApi');
       const data = await lookupBeerByBarcode(barcode);
-      return { beerId: null, beerData: data ? { ...data, barcode } : null };
-    };
+      if (data) params.beerData = JSON.stringify({ ...data, barcode });
+      else params.barcode = barcode;
+    }
 
-    Alert.alert('Nouvelle bière', "Cette bière n'est pas dans cette cave. Tu veux l'ajouter ?", [
-      { text: 'Annuler', style: 'cancel' },
-      {
-        text: 'Ajouter',
-        onPress: async () => {
-          const { beerId, beerData } = await lookupBeer();
-          const params: any = { cellarId: activeCellarId };
-          if (beerId) params.beerId = beerId;
-          else if (beerData) params.beerData = JSON.stringify(beerData);
-          else params.barcode = barcode;
-          router.push({ pathname: '/beer/add', params });
-        },
-      },
-    ]);
+    setAddingBeer(false);
+    setNewBeerModal(false);
+    setPendingBarcode(null);
+    router.push({ pathname: '/beer/add', params });
   };
 
   return (
@@ -421,6 +427,48 @@ export default function CellarScreen() {
                 <Text style={styles.deleteBtnText}>Supprimer cette cave</Text>
               </Pressable>
             )}
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Modal nouvelle bière (code-barre inconnu) */}
+      <Modal
+        visible={newBeerModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { setNewBeerModal(false); setPendingBarcode(null); }}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => { if (!addingBeer) { setNewBeerModal(false); setPendingBarcode(null); } }}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            <View style={styles.newBeerModalIcon}>
+              <Ionicons name="beer-outline" size={36} color={Colors.primary} />
+            </View>
+            <Text style={styles.modalTitle}>Nouvelle bière</Text>
+            <Text style={styles.newBeerModalText}>
+              Cette bière n'est pas encore dans cette cave. Tu veux l'ajouter ?
+            </Text>
+            <View style={styles.modalActions}>
+              <Pressable
+                style={styles.modalCancelBtn}
+                onPress={() => { setNewBeerModal(false); setPendingBarcode(null); }}
+                disabled={addingBeer}
+              >
+                <Text style={styles.modalCancelText}>Annuler</Text>
+              </Pressable>
+              <Pressable
+                style={[styles.modalConfirmBtn, addingBeer && { opacity: 0.7 }]}
+                onPress={confirmAddBeer}
+                disabled={addingBeer}
+              >
+                {addingBeer
+                  ? <ActivityIndicator size="small" color={Colors.background} />
+                  : <Text style={styles.modalConfirmText}>Ajouter</Text>
+                }
+              </Pressable>
+            </View>
           </Pressable>
         </Pressable>
       </Modal>
@@ -632,6 +680,11 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: Colors.error,
   },
   deleteBtnText: { color: Colors.error, fontWeight: '600', fontSize: 14 },
+  newBeerModalIcon: { alignItems: 'center', marginBottom: 12 },
+  newBeerModalText: {
+    fontSize: 14, color: Colors.textMuted, textAlign: 'center',
+    lineHeight: 20, marginBottom: 24,
+  },
   // Scanner
   scannerOverlay: { flex: 1, alignItems: 'center', justifyContent: 'space-between', padding: 24 },
   scannerClose: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 20, padding: 6 },

@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -30,6 +31,7 @@ export default function BeerDetailScreen() {
   const { session } = useAuth();
 
   const scrollRef = useRef<ScrollView>(null);
+  const [lightboxVisible, setLightboxVisible] = useState(false);
   const [entry, setEntry] = useState<CellarEntry | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -206,7 +208,14 @@ export default function BeerDetailScreen() {
         <ScrollView ref={scrollRef} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
           {/* Hero image */}
           {displayPhoto ? (
-            <Image source={{ uri: displayPhoto }} style={styles.heroImage} contentFit="cover" />
+            <Pressable onPress={() => !editing && setLightboxVisible(true)}>
+              <Image source={{ uri: displayPhoto }} style={styles.heroImage} contentFit="cover" />
+              {!editing && (
+                <View style={styles.lightboxHint}>
+                  <Ionicons name="expand-outline" size={18} color="rgba(255,255,255,0.8)" />
+                </View>
+              )}
+            </Pressable>
           ) : (
             <View style={styles.heroPlaceholder}>
               <Ionicons name="beer-outline" size={64} color={Colors.textDim} />
@@ -329,6 +338,20 @@ export default function BeerDetailScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Lightbox image plein écran */}
+      <Modal visible={lightboxVisible} transparent animationType="fade" onRequestClose={() => setLightboxVisible(false)}>
+        <Pressable style={styles.lightboxOverlay} onPress={() => setLightboxVisible(false)}>
+          <Image
+            source={{ uri: displayPhoto ?? '' }}
+            style={styles.lightboxImage}
+            contentFit="contain"
+          />
+          <Pressable style={styles.lightboxClose} onPress={() => setLightboxVisible(false)}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -366,6 +389,19 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   photoBtnText: { color: Colors.primary, fontWeight: '600', fontSize: 14 },
+  lightboxHint: {
+    position: 'absolute', bottom: 10, right: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 8, padding: 6,
+  },
+  lightboxOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.95)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  lightboxImage: { width: '100%', height: '100%' },
+  lightboxClose: {
+    position: 'absolute', top: 50, right: 20,
+    backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: 20, padding: 8,
+  },
   heroPlaceholder: {
     height: 260,
     backgroundColor: Colors.surface,

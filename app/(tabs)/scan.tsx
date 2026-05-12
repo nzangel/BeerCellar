@@ -64,6 +64,7 @@ export default function ScanScreen() {
       .from('beers')
       .select('*')
       .eq('barcode', barcode)
+      .eq('user_id', session!.user.id)
       .maybeSingle();
 
     const params: any = {};

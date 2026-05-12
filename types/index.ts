@@ -8,6 +8,7 @@ export type Profile = {
 
 export type Beer = {
   id: string;
+  user_id: string;
   barcode: string | null;
   name: string;
   brewery: string | null;

@@ -229,7 +229,7 @@ export default function CellarScreen() {
     setAddingBeer(true);
     const barcode = pendingBarcode;
 
-    const { data: globalBeer } = await supabase.from('beers').select('*').eq('barcode', barcode).maybeSingle();
+    const { data: globalBeer } = await supabase.from('beers').select('*').eq('barcode', barcode).eq('user_id', session!.user.id).maybeSingle();
     const params: any = { cellarId: activeCellarId };
     if (globalBeer) {
       params.beerId = globalBeer.id;

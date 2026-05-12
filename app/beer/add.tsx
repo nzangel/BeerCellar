@@ -120,6 +120,7 @@ export default function AddBeerScreen() {
       // Crée ou récupère la bière dans le catalogue
       if (!beerId) {
         const beerPayload: Partial<Beer> & { created_by: string } = {
+          user_id: session.user.id,
           barcode: barcode.trim() || null,
           name: name.trim(),
           brewery: brewery.trim() || null,
@@ -199,11 +200,12 @@ export default function AddBeerScreen() {
     setScannerLoading(true);
 
     try {
-      // Cherche dans le catalogue Supabase
+      // Cherche dans les bières de l'utilisateur
       const { data: globalBeer } = await supabase
         .from('beers')
         .select('*')
         .eq('barcode', barcode)
+        .eq('user_id', session!.user.id)
         .maybeSingle();
 
       setBarcode(barcode);

@@ -37,6 +37,7 @@ export default function AddBeerScreen() {
   const [brewery, setBrewery] = useState('');
   const [style, setStyle] = useState('');
   const [abv, setAbv] = useState('');
+  const [barcode, setBarcode] = useState('');
   const [description, setDescription] = useState('');
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState('');
@@ -62,6 +63,7 @@ export default function AddBeerScreen() {
           setStyle(data.style ?? '');
           setAbv(data.abv?.toString() ?? '');
           setDescription(data.description ?? '');
+          setBarcode(data.barcode ?? '');
         }
       } else if (params.beerData) {
         const data: Partial<Beer> = JSON.parse(params.beerData);
@@ -70,6 +72,9 @@ export default function AddBeerScreen() {
         setBrewery(data.brewery ?? '');
         setStyle(data.style ?? '');
         setAbv(data.abv?.toString() ?? '');
+        setBarcode(data.barcode ?? '');
+      } else if (params.barcode) {
+        setBarcode(params.barcode);
       }
       setInitialLoading(false);
     }
@@ -115,7 +120,7 @@ export default function AddBeerScreen() {
       // Crée ou récupère la bière dans le catalogue
       if (!beerId) {
         const beerPayload: Partial<Beer> & { created_by: string } = {
-          barcode: beer.barcode ?? params.barcode ?? null,
+          barcode: barcode.trim() || null,
           name: name.trim(),
           brewery: brewery.trim() || null,
           style: style.trim() || null,
@@ -201,6 +206,7 @@ export default function AddBeerScreen() {
         .eq('barcode', barcode)
         .maybeSingle();
 
+      setBarcode(barcode);
       if (globalBeer) {
         setName(globalBeer.name ?? '');
         setBrewery(globalBeer.brewery ?? '');
@@ -370,6 +376,21 @@ export default function AddBeerScreen() {
             </View>
           </View>
 
+          <Text style={styles.label}>Code-barres</Text>
+          <View style={styles.barcodeRow}>
+            <TextInput
+              style={[styles.input, styles.barcodeInput]}
+              value={barcode}
+              onChangeText={setBarcode}
+              placeholder="Ex : 5410228193542"
+              placeholderTextColor={Colors.textDim}
+              keyboardType="numeric"
+            />
+            <Pressable style={styles.barcodeScanBtn} onPress={openScanner}>
+              <Ionicons name="barcode-outline" size={22} color={Colors.primary} />
+            </Pressable>
+          </View>
+
           <Text style={styles.label}>Description</Text>
           <TextInput
             style={[styles.input, styles.textarea]}
@@ -517,6 +538,13 @@ const styles = StyleSheet.create({
   textarea: { minHeight: 80, textAlignVertical: 'top' },
   row: { flexDirection: 'row', gap: 12 },
   halfField: { flex: 1, gap: 4 },
+  barcodeRow: { flexDirection: 'row', gap: 10, alignItems: 'center' },
+  barcodeInput: { flex: 1, fontFamily: 'monospace' },
+  barcodeScanBtn: {
+    width: 48, height: 48, borderRadius: 12,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    alignItems: 'center', justifyContent: 'center',
+  },
   photoSection: { flexDirection: 'row', alignItems: 'center', gap: 16, marginBottom: 8 },
   photo: { width: 90, height: 120, borderRadius: 10 },
   photoPlaceholder: {

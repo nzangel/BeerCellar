@@ -4,6 +4,7 @@ import { uploadImage } from '../../lib/storage';
 import { Image } from 'expo-image';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useState } from 'react';
+import UserBadge from '../../components/UserBadge';
 import {
   ActivityIndicator,
   Alert,
@@ -176,9 +177,16 @@ export default function ProfileScreen() {
             </Pressable>
             {!editing ? (
               <>
-                <Text style={styles.username}>@{profile?.username}</Text>
+                <View style={styles.identityRow}>
+                  <View style={styles.identityTexts}>
+                    <Text style={styles.username}>@{profile?.username}</Text>
+                    <Text style={styles.email}>{session?.user.email}</Text>
+                  </View>
+                  {profile?.badge && (
+                    <UserBadge badge={profile.badge} size={50} />
+                  )}
+                </View>
                 {profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
-                <Text style={styles.email}>{session?.user.email}</Text>
               </>
             ) : (
               <View style={styles.editFields}>
@@ -298,6 +306,8 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject, borderRadius: 50,
     backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center',
   },
+  identityRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  identityTexts: { alignItems: 'center', gap: 2 },
   username: { fontSize: 22, fontWeight: '800', color: Colors.text },
   bio: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
   email: { fontSize: 13, color: Colors.textDim },

@@ -19,6 +19,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Avatar from '../../components/Avatar';
+import UserBadge from '../../components/UserBadge';
 import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
@@ -754,6 +755,9 @@ export default function GroupScreen() {
               <Avatar uri={(item.profile as any)?.avatar_url} name={(item.profile as any)?.username} size={44} />
               <View style={styles.memberInfo}>
                 <Text style={styles.memberName}>@{(item.profile as any)?.username}</Text>
+                {(item.profile as any)?.badge && (
+                  <UserBadge badge={(item.profile as any).badge} size={28} />
+                )}
                 {item.role === 'admin' && (
                   <View style={styles.adminBadge}>
                     <Text style={styles.adminBadgeText}>Admin</Text>

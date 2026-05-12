@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import BeerCard from '../../components/BeerCard';
+import UserBadge from '../../components/UserBadge';
 import { Colors } from '../../constants/colors';
 import { supabase } from '../../lib/supabase';
 import { Cellar, CellarEntry, Profile } from '../../types';
@@ -100,7 +101,10 @@ export default function FriendCellarScreen() {
                 </View>
               )}
               <View style={styles.profileInfo}>
-                <Text style={styles.username}>@{profile?.username}</Text>
+                <View style={styles.usernameRow}>
+                  <Text style={styles.username}>@{profile?.username}</Text>
+                  {profile?.badge && <UserBadge badge={profile.badge} size={40} />}
+                </View>
                 {profile?.bio && <Text style={styles.bio}>{profile.bio}</Text>}
                 <Text style={styles.stats}>
                   {activeEntries.length} bière{activeEntries.length !== 1 ? 's' : ''} · {totalBeers} exemplaire{totalBeers !== 1 ? 's' : ''}
@@ -240,6 +244,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
   profileInfo: { flex: 1, gap: 4 },
+  usernameRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   username: { fontSize: 18, fontWeight: '800', color: Colors.text },
   bio: { fontSize: 13, color: Colors.textMuted, lineHeight: 18 },
   stats: { fontSize: 12, color: Colors.primary, fontWeight: '600', marginTop: 2 },

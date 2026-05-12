@@ -224,7 +224,7 @@ export default function CellarScreen() {
       return { beerId: null, beerData: data ? { ...data, barcode } : null };
     };
 
-    Alert.alert('Bière non trouvée', "Cette bière n'est pas dans cette cave. Tu veux l'ajouter ?", [
+    Alert.alert('Nouvelle bière', "Cette bière n'est pas dans cette cave. Tu veux l'ajouter ?", [
       { text: 'Annuler', style: 'cancel' },
       {
         text: 'Ajouter',

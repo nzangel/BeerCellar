@@ -249,6 +249,12 @@ export default function BeerDetailScreen() {
                   {beer?.ibu != null && <Text style={styles.abv}>{beer.ibu} IBU</Text>}
                 </View>
               )}
+              {editing && beer?.barcode && (
+                <View style={styles.barcodeRow}>
+                  <Ionicons name="barcode-outline" size={15} color={Colors.textDim} />
+                  <Text style={styles.barcodeText}>{beer.barcode}</Text>
+                </View>
+              )}
               {beer?.description && (
                 <Text style={styles.beerDescription}>{beer.description}</Text>
               )}
@@ -413,6 +419,8 @@ const styles = StyleSheet.create({
   },
   textarea: { minHeight: 100, textAlignVertical: 'top' },
   styleInput: { marginTop: 4, marginBottom: 0 },
+  barcodeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
+  barcodeText: { fontSize: 12, color: Colors.textDim, fontFamily: 'monospace' },
   quantityRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },
   qtyBtn: {
     width: 44, height: 44, borderRadius: 22,

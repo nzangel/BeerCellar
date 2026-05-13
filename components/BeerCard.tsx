@@ -10,9 +10,10 @@ import StarRating from './StarRating';
 type Props = {
   entry: CellarEntry;
   readonly?: boolean;
+  onLongPress?: () => void;
 };
 
-export default function BeerCard({ entry, readonly = false }: Props) {
+export default function BeerCard({ entry, readonly = false, onLongPress }: Props) {
   const router = useRouter();
   const beer = entry.beer;
 
@@ -20,6 +21,8 @@ export default function BeerCard({ entry, readonly = false }: Props) {
     <Pressable
       style={({ pressed }) => [styles.card, pressed && !readonly && styles.cardPressed]}
       onPress={() => !readonly && router.push(`/beer/${entry.id}`)}
+      onLongPress={onLongPress}
+      delayLongPress={350}
     >
       <View style={styles.imageContainer}>
         {entry.photo_url || beer?.image_url ? (

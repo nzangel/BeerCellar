@@ -54,6 +54,12 @@ export default function CellarScreen() {
   const [editIsPublic, setEditIsPublic] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
 
+  // Copier / Déplacer une bière
+  const [beerActionModal, setBeerActionModal] = useState(false);
+  const [selectedEntry, setSelectedEntry] = useState<CellarEntry | null>(null);
+  const [beerAction, setBeerAction] = useState<'copy' | 'move'>('copy');
+  const [beerActionLoading, setBeerActionLoading] = useState(false);
+
   // Scanner
   const [scannerVisible, setScannerVisible] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
@@ -202,6 +208,48 @@ export default function CellarScreen() {
 
   const totalBeers = activeEntries.reduce((acc, e) => acc + e.quantity, 0);
   const activeCellar = cellars.find((c) => c.id === activeCellarId);
+
+  const handleBeerLongPress = (entry: CellarEntry) => {
+    const otherCellars = cellars.filter((c) => c.id !== activeCellarId);
+    if (otherCellars.length === 0) return;
+    setSelectedEntry(entry);
+    setBeerAction('copy');
+    setBeerActionModal(true);
+  };
+
+  const executeBeerAction = async (targetCellarId: string) => {
+    if (!selectedEntry || !session) return;
+    setBeerActionLoading(true);
+
+    if (beerAction === 'move') {
+      const { error } = await supabase
+        .from('cellar_entries')
+        .update({ cellar_id: targetCellarId })
+        .eq('id', selectedEntry.id);
+      if (!error) {
+        setEntries((prev) =>
+          prev.map((e) => (e.id === selectedEntry.id ? { ...e, cellar_id: targetCellarId } : e))
+        );
+      }
+    } else {
+      await supabase.from('cellar_entries').insert({
+        user_id: selectedEntry.user_id,
+        beer_id: selectedEntry.beer_id,
+        cellar_id: targetCellarId,
+        rating: selectedEntry.rating,
+        notes: selectedEntry.notes,
+        taste_tags: selectedEntry.taste_tags,
+        photo_url: selectedEntry.photo_url,
+        quantity: selectedEntry.quantity,
+        is_favorite: selectedEntry.is_favorite,
+      });
+      await fetchAll();
+    }
+
+    setBeerActionLoading(false);
+    setBeerActionModal(false);
+    setSelectedEntry(null);
+  };
 
   const openScanner = async () => {
     if (!cameraPermission?.granted) {
@@ -473,6 +521,100 @@ export default function CellarScreen() {
         </Pressable>
       </Modal>
 
+      {/* Modal Copier / Déplacer une bière */}
+      <Modal
+        visible={beerActionModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => { if (!beerActionLoading) setBeerActionModal(false); }}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => { if (!beerActionLoading) setBeerActionModal(false); }}
+        >
+          <Pressable style={styles.modalCard} onPress={() => {}}>
+            {/* En-tête bière */}
+            <View style={styles.beerActionHeader}>
+              <Ionicons name="beer-outline" size={22} color={Colors.primary} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.beerActionName} numberOfLines={1}>
+                  {selectedEntry?.beer?.name ?? 'Bière'}
+                </Text>
+                {selectedEntry?.beer?.brewery && (
+                  <Text style={styles.beerActionBrewery} numberOfLines={1}>
+                    {selectedEntry.beer.brewery}
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* Toggle Copier / Déplacer */}
+            <View style={styles.beerActionToggle}>
+              <Pressable
+                style={[styles.beerActionToggleBtn, beerAction === 'copy' && styles.beerActionToggleBtnActive]}
+                onPress={() => setBeerAction('copy')}
+              >
+                <Ionicons
+                  name="copy-outline"
+                  size={16}
+                  color={beerAction === 'copy' ? Colors.background : Colors.textMuted}
+                />
+                <Text style={[styles.beerActionToggleText, beerAction === 'copy' && styles.beerActionToggleTextActive]}>
+                  Copier
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.beerActionToggleBtn, beerAction === 'move' && styles.beerActionToggleBtnActive]}
+                onPress={() => setBeerAction('move')}
+              >
+                <Ionicons
+                  name="arrow-forward-circle-outline"
+                  size={16}
+                  color={beerAction === 'move' ? Colors.background : Colors.textMuted}
+                />
+                <Text style={[styles.beerActionToggleText, beerAction === 'move' && styles.beerActionToggleTextActive]}>
+                  Déplacer
+                </Text>
+              </Pressable>
+            </View>
+
+            <Text style={styles.beerActionHint}>
+              {beerAction === 'copy'
+                ? 'La bière restera aussi dans la cave actuelle.'
+                : 'La bière sera retirée de la cave actuelle.'}
+            </Text>
+
+            {/* Liste des autres caves */}
+            <Text style={styles.beerActionSectionTitle}>Choisir une cave :</Text>
+            {cellars
+              .filter((c) => c.id !== activeCellarId)
+              .map((c) => (
+                <Pressable
+                  key={c.id}
+                  style={styles.beerActionCellarRow}
+                  onPress={() => executeBeerAction(c.id)}
+                  disabled={beerActionLoading}
+                >
+                  <Text style={styles.beerActionCellarEmoji}>{c.emoji}</Text>
+                  <Text style={styles.beerActionCellarName}>{c.name}</Text>
+                  {beerActionLoading
+                    ? <ActivityIndicator size="small" color={Colors.primary} />
+                    : <Ionicons name="chevron-forward" size={18} color={Colors.primary} />
+                  }
+                </Pressable>
+              ))}
+
+            <Pressable
+              style={[styles.modalCancelBtn, { marginTop: 16 }]}
+              onPress={() => setBeerActionModal(false)}
+              disabled={beerActionLoading}
+            >
+              <Text style={styles.modalCancelText}>Annuler</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Scanner */}
       <Modal visible={scannerVisible} animationType="slide" onRequestClose={() => setScannerVisible(false)}>
         <View style={{ flex: 1, backgroundColor: '#000' }}>
@@ -572,7 +714,12 @@ export default function CellarScreen() {
           <FlatList
             data={filtered}
             keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <BeerCard entry={item} />}
+            renderItem={({ item }) => (
+              <BeerCard
+                entry={item}
+                onLongPress={() => handleBeerLongPress(item)}
+              />
+            )}
             contentContainerStyle={styles.list}
             showsVerticalScrollIndicator={false}
             refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.primary} />}
@@ -726,4 +873,38 @@ const styles = StyleSheet.create({
     paddingVertical: 12, borderRadius: 12, marginTop: 8,
   },
   emptyBtnText: { color: Colors.background, fontWeight: '700', fontSize: 15 },
+  // Copier / Déplacer
+  beerActionHeader: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    marginBottom: 16, paddingBottom: 16,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  beerActionName: { fontSize: 15, fontWeight: '700', color: Colors.text },
+  beerActionBrewery: { fontSize: 12, color: Colors.textMuted, marginTop: 1 },
+  beerActionToggle: {
+    flexDirection: 'row', gap: 8, marginBottom: 10,
+  },
+  beerActionToggleBtn: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, borderRadius: 12,
+    backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+  },
+  beerActionToggleBtnActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  beerActionToggleText: { fontSize: 14, fontWeight: '600', color: Colors.textMuted },
+  beerActionToggleTextActive: { color: Colors.background },
+  beerActionHint: {
+    fontSize: 12, color: Colors.textDim, textAlign: 'center',
+    marginBottom: 16,
+  },
+  beerActionSectionTitle: {
+    fontSize: 13, fontWeight: '700', color: Colors.textMuted,
+    marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5,
+  },
+  beerActionCellarRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    paddingVertical: 13, paddingHorizontal: 4,
+    borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  beerActionCellarEmoji: { fontSize: 20 },
+  beerActionCellarName: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.text },
 });

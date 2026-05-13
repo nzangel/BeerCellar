@@ -211,7 +211,14 @@ export default function CellarScreen() {
 
   const handleBeerLongPress = (entry: CellarEntry) => {
     const otherCellars = cellars.filter((c) => c.id !== activeCellarId);
-    if (otherCellars.length === 0) return;
+    if (otherCellars.length === 0) {
+      Alert.alert(
+        'Aucune autre cave',
+        'Crée d\'abord une autre cave pour pouvoir copier ou déplacer cette bière.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
     setSelectedEntry(entry);
     setBeerAction('copy');
     setBeerActionModal(true);

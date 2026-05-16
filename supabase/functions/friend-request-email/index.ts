@@ -79,7 +79,7 @@ Deno.serve(async (req) => {
               <table width="100%" cellpadding="0" cellspacing="0">
                 <tr>
                   <td align="center">
-                    <a href="beercellar://community"
+                    <a href="beercellar:///social"
                        style="display:inline-block;background-color:#f5a623;color:#1a0a00;font-size:15px;font-weight:700;text-decoration:none;padding:14px 32px;border-radius:12px;">
                       Voir la demande
                     </a>

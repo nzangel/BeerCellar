@@ -40,6 +40,7 @@ export default function BeerDetailScreen() {
 
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState('');
+  const [brewery, setBrewery] = useState('');
   const [style, setStyle] = useState('');
   const [year, setYear] = useState('');
   const [cellarType, setCellarType] = useState('beer');
@@ -63,6 +64,7 @@ export default function BeerDetailScreen() {
       setEntry(data as CellarEntry);
       setRating(data.rating ?? 0);
       setNotes(data.notes ?? '');
+      setBrewery((data as any).beer?.brewery ?? '');
       setStyle((data as any).beer?.style ?? '');
       setYear((data as any).beer?.year?.toString() ?? '');
       setCellarType((data as any).cellar?.type ?? 'beer');
@@ -93,6 +95,7 @@ export default function BeerDetailScreen() {
     // Mise à jour du style et de l'année dans la table beers
     if (beer?.id) {
       const beerUpdates: Record<string, any> = {};
+      if (brewery.trim() !== (beer.brewery ?? '')) beerUpdates.brewery = brewery.trim() || null;
       if (style.trim() !== (beer.style ?? '')) beerUpdates.style = style.trim() || null;
       const parsedYear = year ? parseInt(year, 10) : null;
       if (parsedYear !== (beer.year ?? null)) beerUpdates.year = parsedYear;
@@ -255,6 +258,14 @@ export default function BeerDetailScreen() {
               {beer?.brewery && <Text style={styles.brewery}>{beer.brewery}</Text>}
               {editing ? (
                 <View style={{ gap: 8 }}>
+                  <TextInput
+                    style={[styles.input, styles.styleInput]}
+                    value={brewery}
+                    onChangeText={setBrewery}
+                    placeholder={labels.breweryPlaceholder}
+                    placeholderTextColor={Colors.textDim}
+                    autoCapitalize="words"
+                  />
                   <TextInput
                     style={[styles.input, styles.styleInput]}
                     value={style}

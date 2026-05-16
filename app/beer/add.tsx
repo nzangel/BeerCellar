@@ -26,11 +26,13 @@ import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { Beer, TasteTag } from '../../types';
+import { getCellarTypeLabels } from '../../lib/cellarTypeLabels';
 
 export default function AddBeerScreen() {
   const router = useRouter();
   const { session } = useAuth();
-  const params = useLocalSearchParams<{ beerId?: string; beerData?: string; barcode?: string; cellarId?: string }>();
+  const params = useLocalSearchParams<{ beerId?: string; beerData?: string; barcode?: string; cellarId?: string; cellarType?: string }>();
+  const labels = getCellarTypeLabels(params.cellarType);
 
   const [beer, setBeer] = useState<Partial<Beer>>({});
   const [name, setName] = useState('');
@@ -43,6 +45,7 @@ export default function AddBeerScreen() {
   const [notes, setNotes] = useState('');
   const [tasteTags, setTasteTags] = useState<TasteTag[]>([]);
   const [quantity, setQuantity] = useState(1);
+  const [year, setYear] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
@@ -62,6 +65,7 @@ export default function AddBeerScreen() {
           setBrewery(data.brewery ?? '');
           setStyle(data.style ?? '');
           setAbv(data.abv?.toString() ?? '');
+          setYear(data.year?.toString() ?? '');
           setDescription(data.description ?? '');
           setBarcode(data.barcode ?? '');
         }
@@ -72,6 +76,7 @@ export default function AddBeerScreen() {
         setBrewery(data.brewery ?? '');
         setStyle(data.style ?? '');
         setAbv(data.abv?.toString() ?? '');
+        setYear(data.year?.toString() ?? '');
         setBarcode(data.barcode ?? '');
       } else if (params.barcode) {
         setBarcode(params.barcode);
@@ -126,6 +131,7 @@ export default function AddBeerScreen() {
           brewery: brewery.trim() || null,
           style: style.trim() || null,
           abv: abv ? parseFloat(abv) : null,
+          year: year ? parseInt(year, 10) : null,
           description: description.trim() || null,
           image_url: beer.image_url ?? null,
           country: beer.country ?? null,
@@ -251,7 +257,7 @@ export default function AddBeerScreen() {
           <Ionicons name="close" size={24} color={Colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>
-          {params.beerId ? 'Ajouter à ma cave' : 'Nouvelle bière'}
+          {params.beerId ? 'Ajouter à ma cave' : labels.newItem}
         </Text>
         <View style={styles.headerRight}>
           <Pressable style={styles.scanBtn} onPress={openScanner}>
@@ -341,27 +347,27 @@ export default function AddBeerScreen() {
             style={styles.input}
             value={name}
             onChangeText={setName}
-            placeholder="Chimay Bleue"
+            placeholder={labels.namePlaceholder}
             placeholderTextColor={Colors.textDim}
           />
 
-          <Text style={styles.label}>Brasserie</Text>
+          <Text style={styles.label}>{labels.brewery}</Text>
           <TextInput
             style={styles.input}
             value={brewery}
             onChangeText={setBrewery}
-            placeholder="Bières de Chimay"
+            placeholder={labels.breweryPlaceholder}
             placeholderTextColor={Colors.textDim}
           />
 
           <View style={styles.row}>
             <View style={styles.halfField}>
-              <Text style={styles.label}>Style</Text>
+              <Text style={styles.label}>{labels.style}</Text>
               <TextInput
                 style={styles.input}
                 value={style}
                 onChangeText={setStyle}
-                placeholder="Trappiste"
+                placeholder={labels.stylePlaceholder}
                 placeholderTextColor={Colors.textDim}
               />
             </View>
@@ -377,6 +383,21 @@ export default function AddBeerScreen() {
               />
             </View>
           </View>
+
+          {labels.showYear && (
+            <View style={styles.halfField}>
+              <Text style={styles.label}>{labels.yearLabel}</Text>
+              <TextInput
+                style={styles.input}
+                value={year}
+                onChangeText={setYear}
+                placeholder="2019"
+                placeholderTextColor={Colors.textDim}
+                keyboardType="number-pad"
+                maxLength={4}
+              />
+            </View>
+          )}
 
           <Text style={styles.label}>Code-barres</Text>
           <View style={styles.barcodeRow}>

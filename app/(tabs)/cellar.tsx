@@ -22,6 +22,7 @@ import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { Cellar, CellarEntry } from '../../types';
+import { CELLAR_TYPES, CellarType } from '../../lib/cellarTypeLabels';
 
 type SortOption = 'date' | 'rating' | 'name' | 'favorite';
 
@@ -44,6 +45,7 @@ export default function CellarScreen() {
   const [createModal, setCreateModal] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmoji, setNewEmoji] = useState('🍺');
+  const [newType, setNewType] = useState<CellarType>('beer');
   const [creating, setCreating] = useState(false);
 
   // Édition de cave (renommer / partager / supprimer)
@@ -110,7 +112,7 @@ export default function CellarScreen() {
     setCreating(true);
     const { data, error } = await supabase
       .from('cellars')
-      .insert({ user_id: session.user.id, name: newName.trim(), emoji: newEmoji, is_default: false })
+      .insert({ user_id: session.user.id, name: newName.trim(), emoji: newEmoji, type: newType, is_default: false })
       .select()
       .single();
     setCreating(false);
@@ -121,6 +123,7 @@ export default function CellarScreen() {
       setCreateModal(false);
       setNewName('');
       setNewEmoji('🍺');
+      setNewType('beer');
     }
   };
 
@@ -285,7 +288,8 @@ export default function CellarScreen() {
     const barcode = pendingBarcode;
 
     const { data: globalBeer } = await supabase.from('beers').select('*').eq('barcode', barcode).eq('user_id', session!.user.id).maybeSingle();
-    const params: any = { cellarId: activeCellarId };
+    const currentCellar = cellars.find((c) => c.id === activeCellarId);
+    const params: any = { cellarId: activeCellarId, cellarType: currentCellar?.type ?? 'beer' };
     if (globalBeer) {
       params.beerId = globalBeer.id;
     } else {
@@ -319,7 +323,7 @@ export default function CellarScreen() {
           </Pressable>
           <Pressable
             style={styles.addBtn}
-            onPress={() => router.push({ pathname: '/beer/add', params: { cellarId: activeCellarId } })}
+            onPress={() => router.push({ pathname: '/beer/add', params: { cellarId: activeCellarId, cellarType: activeCellar?.type ?? 'beer' } })}
           >
             <Ionicons name="add" size={24} color={Colors.background} />
           </Pressable>
@@ -386,6 +390,20 @@ export default function CellarScreen() {
               ))}
             </View>
 
+            {/* Type d'alcool */}
+            <View style={styles.typeRow}>
+              {CELLAR_TYPES.map((t) => (
+                <Pressable
+                  key={t.key}
+                  style={[styles.typeChip, newType === t.key && styles.typeChipActive]}
+                  onPress={() => setNewType(t.key)}
+                >
+                  <Text style={styles.typeEmoji}>{t.emoji}</Text>
+                  <Text style={[styles.typeText, newType === t.key && styles.typeTextActive]}>{t.label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
             <TextInput
               style={styles.modalInput}
               value={newName}
@@ -396,7 +414,7 @@ export default function CellarScreen() {
             />
 
             <View style={styles.modalActions}>
-              <Pressable style={styles.modalCancelBtn} onPress={() => { setCreateModal(false); setNewName(''); }}>
+              <Pressable style={styles.modalCancelBtn} onPress={() => { setCreateModal(false); setNewName(''); setNewType('beer'); }}>
                 <Text style={styles.modalCancelText}>Annuler</Text>
               </Pressable>
               <Pressable
@@ -711,7 +729,7 @@ export default function CellarScreen() {
             {activeEntries.length === 0 && (
               <Pressable
                 style={styles.emptyBtn}
-                onPress={() => router.push({ pathname: '/beer/add', params: { cellarId: activeCellarId } })}
+                onPress={() => router.push({ pathname: '/beer/add', params: { cellarId: activeCellarId, cellarType: activeCellar?.type ?? 'beer' } })}
               >
                 <Text style={styles.emptyBtnText}>Ajouter une bière</Text>
               </Pressable>
@@ -773,6 +791,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 2,
   },
   cellarChipCountActive: { backgroundColor: 'rgba(255,255,255,0.25)', color: Colors.background },
+  typeRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  typeChip: {
+    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+    paddingVertical: 10, borderRadius: 12,
+    backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+  },
+  typeChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
+  typeEmoji: { fontSize: 16 },
+  typeText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
+  typeTextActive: { color: Colors.background },
   cellarChipNew: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 14, height: 44, borderRadius: 22,

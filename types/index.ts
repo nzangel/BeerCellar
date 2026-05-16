@@ -16,6 +16,7 @@ export type Beer = {
   style: string | null;
   abv: number | null;
   ibu: number | null;
+  year: number | null;
   description: string | null;
   image_url: string | null;
   country: string | null;
@@ -56,6 +57,7 @@ export type Cellar = {
   user_id: string;
   name: string;
   emoji: string;
+  type: string;
   is_default: boolean;
   is_public: boolean;
   created_at: string;

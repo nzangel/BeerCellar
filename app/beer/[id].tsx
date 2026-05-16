@@ -24,6 +24,7 @@ import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { CellarEntry, TasteTag } from '../../types';
+import { getCellarTypeLabels } from '../../lib/cellarTypeLabels';
 
 export default function BeerDetailScreen() {
   const router = useRouter();
@@ -40,6 +41,8 @@ export default function BeerDetailScreen() {
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState('');
   const [style, setStyle] = useState('');
+  const [year, setYear] = useState('');
+  const [cellarType, setCellarType] = useState('beer');
   const [tasteTags, setTasteTags] = useState<TasteTag[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [isFavorite, setIsFavorite] = useState(false);
@@ -52,7 +55,7 @@ export default function BeerDetailScreen() {
   const fetchEntry = async () => {
     const { data } = await supabase
       .from('cellar_entries')
-      .select('*, beer:beers(*)')
+      .select('*, beer:beers(*), cellar:cellars(type)')
       .eq('id', id)
       .single();
 
@@ -61,6 +64,8 @@ export default function BeerDetailScreen() {
       setRating(data.rating ?? 0);
       setNotes(data.notes ?? '');
       setStyle((data as any).beer?.style ?? '');
+      setYear((data as any).beer?.year?.toString() ?? '');
+      setCellarType((data as any).cellar?.type ?? 'beer');
       setTasteTags(data.taste_tags ?? []);
       setQuantity(data.quantity ?? 1);
       setIsFavorite(data.is_favorite ?? false);
@@ -85,9 +90,15 @@ export default function BeerDetailScreen() {
       if (uploaded) photoUrl = uploaded;
     }
 
-    // Mise à jour du style dans la table beers
-    if (beer?.id && style.trim() !== (beer.style ?? '')) {
-      await supabase.from('beers').update({ style: style.trim() || null }).eq('id', beer.id);
+    // Mise à jour du style et de l'année dans la table beers
+    if (beer?.id) {
+      const beerUpdates: Record<string, any> = {};
+      if (style.trim() !== (beer.style ?? '')) beerUpdates.style = style.trim() || null;
+      const parsedYear = year ? parseInt(year, 10) : null;
+      if (parsedYear !== (beer.year ?? null)) beerUpdates.year = parsedYear;
+      if (Object.keys(beerUpdates).length > 0) {
+        await supabase.from('beers').update(beerUpdates).eq('id', beer.id);
+      }
     }
 
     const { error: updateError } = await supabase.from('cellar_entries').update({
@@ -172,6 +183,7 @@ export default function BeerDetailScreen() {
 
   const beer = entry.beer;
   const displayPhoto = photoUri ?? entry.photo_url ?? beer?.image_url;
+  const labels = getCellarTypeLabels(cellarType);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -242,17 +254,31 @@ export default function BeerDetailScreen() {
               <Text style={styles.beerName}>{beer?.name}</Text>
               {beer?.brewery && <Text style={styles.brewery}>{beer.brewery}</Text>}
               {editing ? (
-                <TextInput
-                  style={[styles.input, styles.styleInput]}
-                  value={style}
-                  onChangeText={setStyle}
-                  placeholder="Style (ex: IPA, Stout, Lager…)"
-                  placeholderTextColor={Colors.textDim}
-                  autoCapitalize="words"
-                />
+                <View style={{ gap: 8 }}>
+                  <TextInput
+                    style={[styles.input, styles.styleInput]}
+                    value={style}
+                    onChangeText={setStyle}
+                    placeholder={`${labels.style} (ex: ${labels.stylePlaceholder})`}
+                    placeholderTextColor={Colors.textDim}
+                    autoCapitalize="words"
+                  />
+                  {labels.showYear && (
+                    <TextInput
+                      style={[styles.input, styles.styleInput]}
+                      value={year}
+                      onChangeText={setYear}
+                      placeholder={`${labels.yearLabel} (ex: 2019)`}
+                      placeholderTextColor={Colors.textDim}
+                      keyboardType="number-pad"
+                      maxLength={4}
+                    />
+                  )}
+                </View>
               ) : (
                 <View style={styles.metaRow}>
                   {beer?.style && <View style={styles.badge}><Text style={styles.badgeText}>{beer.style}</Text></View>}
+                  {beer?.year != null && <View style={styles.badge}><Text style={styles.badgeText}>{beer.year}</Text></View>}
                   {beer?.country && <View style={styles.badge}><Text style={styles.badgeText}>🌍 {beer.country}</Text></View>}
                   {beer?.abv != null && <Text style={styles.abv}>{beer.abv}% ABV</Text>}
                   {beer?.ibu != null && <Text style={styles.abv}>{beer.ibu} IBU</Text>}

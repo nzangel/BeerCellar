@@ -122,7 +122,7 @@ export default function AddBeerScreen() {
     try {
       let beerId = params.beerId ?? beer.id;
 
-      // Crée ou récupère la bière dans le catalogue
+      // Crée ou met à jour la bière dans le catalogue
       if (!beerId) {
         const beerPayload: Partial<Beer> & { created_by: string } = {
           user_id: session.user.id,
@@ -149,6 +149,16 @@ export default function AddBeerScreen() {
           return;
         }
         beerId = newBeer.id;
+      } else {
+        // Mise à jour de la bière existante avec les modifications de l'utilisateur
+        await supabase.from('beers').update({
+          name: name.trim(),
+          brewery: brewery.trim() || null,
+          style: style.trim() || null,
+          abv: abv ? parseFloat(abv) : null,
+          year: year ? parseInt(year, 10) : null,
+          description: description.trim() || null,
+        }).eq('id', beerId).eq('user_id', session.user.id);
       }
 
       // Upload photo si sélectionnée

@@ -40,6 +40,7 @@ export default function BeerDetailScreen() {
 
   const [rating, setRating] = useState(0);
   const [notes, setNotes] = useState('');
+  const [beerName, setBeerName] = useState('');
   const [brewery, setBrewery] = useState('');
   const [style, setStyle] = useState('');
   const [year, setYear] = useState('');
@@ -64,6 +65,7 @@ export default function BeerDetailScreen() {
       setEntry(data as CellarEntry);
       setRating(data.rating ?? 0);
       setNotes(data.notes ?? '');
+      setBeerName((data as any).beer?.name ?? '');
       setBrewery((data as any).beer?.brewery ?? '');
       setStyle((data as any).beer?.style ?? '');
       setYear((data as any).beer?.year?.toString() ?? '');
@@ -95,6 +97,7 @@ export default function BeerDetailScreen() {
     // Mise à jour du style et de l'année dans la table beers
     if (beer?.id) {
       const beerUpdates: Record<string, any> = {};
+      if (beerName.trim() && beerName.trim() !== (beer.name ?? '')) beerUpdates.name = beerName.trim();
       if (brewery.trim() !== (beer.brewery ?? '')) beerUpdates.brewery = brewery.trim() || null;
       if (style.trim() !== (beer.style ?? '')) beerUpdates.style = style.trim() || null;
       const parsedYear = year ? parseInt(year, 10) : null;
@@ -254,10 +257,18 @@ export default function BeerDetailScreen() {
           <View style={styles.content}>
             {/* Beer info */}
             <View style={styles.beerInfo}>
-              <Text style={styles.beerName}>{beer?.name}</Text>
-              {beer?.brewery && <Text style={styles.brewery}>{beer.brewery}</Text>}
               {editing ? (
-                <View style={{ gap: 8 }}>
+                <View style={{ gap: 6 }}>
+                  <Text style={styles.fieldLabel}>Nom</Text>
+                  <TextInput
+                    style={[styles.input, styles.styleInput]}
+                    value={beerName}
+                    onChangeText={setBeerName}
+                    placeholder={labels.namePlaceholder}
+                    placeholderTextColor={Colors.textDim}
+                    autoCapitalize="words"
+                  />
+                  <Text style={styles.fieldLabel}>{labels.brewery}</Text>
                   <TextInput
                     style={[styles.input, styles.styleInput]}
                     value={brewery}
@@ -266,34 +277,42 @@ export default function BeerDetailScreen() {
                     placeholderTextColor={Colors.textDim}
                     autoCapitalize="words"
                   />
+                  <Text style={styles.fieldLabel}>{labels.style}</Text>
                   <TextInput
                     style={[styles.input, styles.styleInput]}
                     value={style}
                     onChangeText={setStyle}
-                    placeholder={`${labels.style} (ex: ${labels.stylePlaceholder})`}
+                    placeholder={labels.stylePlaceholder}
                     placeholderTextColor={Colors.textDim}
                     autoCapitalize="words"
                   />
                   {labels.showYear && (
-                    <TextInput
-                      style={[styles.input, styles.styleInput]}
-                      value={year}
-                      onChangeText={setYear}
-                      placeholder={`${labels.yearLabel} (ex: 2019)`}
-                      placeholderTextColor={Colors.textDim}
-                      keyboardType="number-pad"
-                      maxLength={4}
-                    />
+                    <>
+                      <Text style={styles.fieldLabel}>{labels.yearLabel}</Text>
+                      <TextInput
+                        style={[styles.input, styles.styleInput]}
+                        value={year}
+                        onChangeText={setYear}
+                        placeholder="2019"
+                        placeholderTextColor={Colors.textDim}
+                        keyboardType="number-pad"
+                        maxLength={4}
+                      />
+                    </>
                   )}
                 </View>
               ) : (
-                <View style={styles.metaRow}>
-                  {beer?.style && <View style={styles.badge}><Text style={styles.badgeText}>{beer.style}</Text></View>}
-                  {beer?.year != null && <View style={styles.badge}><Text style={styles.badgeText}>{beer.year}</Text></View>}
-                  {beer?.country && <View style={styles.badge}><Text style={styles.badgeText}>🌍 {beer.country}</Text></View>}
-                  {beer?.abv != null && <Text style={styles.abv}>{beer.abv}% ABV</Text>}
-                  {beer?.ibu != null && <Text style={styles.abv}>{beer.ibu} IBU</Text>}
-                </View>
+                <>
+                  <Text style={styles.beerName}>{beer?.name}</Text>
+                  {beer?.brewery && <Text style={styles.brewery}>{beer.brewery}</Text>}
+                  <View style={styles.metaRow}>
+                    {beer?.style && <View style={styles.badge}><Text style={styles.badgeText}>{beer.style}</Text></View>}
+                    {beer?.year != null && <View style={styles.badge}><Text style={styles.badgeText}>{beer.year}</Text></View>}
+                    {beer?.country && <View style={styles.badge}><Text style={styles.badgeText}>🌍 {beer.country}</Text></View>}
+                    {beer?.abv != null && <Text style={styles.abv}>{beer.abv}% ABV</Text>}
+                    {beer?.ibu != null && <Text style={styles.abv}>{beer.ibu} IBU</Text>}
+                  </View>
+                </>
               )}
               {editing && beer?.barcode && (
                 <View style={styles.barcodeRow}>
@@ -491,7 +510,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   textarea: { minHeight: 100, textAlignVertical: 'top' },
-  styleInput: { marginTop: 4, marginBottom: 0 },
+  styleInput: { marginTop: 0, marginBottom: 0 },
+  fieldLabel: { fontSize: 12, fontWeight: '600', color: Colors.textMuted, marginTop: 6 },
   barcodeRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 2 },
   barcodeText: { fontSize: 12, color: Colors.textDim, fontFamily: 'monospace' },
   quantityRow: { flexDirection: 'row', alignItems: 'center', gap: 20 },

@@ -46,6 +46,7 @@ export default function CellarScreen() {
   const [newName, setNewName] = useState('');
   const [newEmoji, setNewEmoji] = useState('🍺');
   const [newType, setNewType] = useState<CellarType>('beer');
+  const [typeDropdownOpen, setTypeDropdownOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
   // Édition de cave (renommer / partager / supprimer)
@@ -124,6 +125,7 @@ export default function CellarScreen() {
       setNewName('');
       setNewEmoji('🍺');
       setNewType('beer');
+      setTypeDropdownOpen(false);
     }
   };
 
@@ -390,18 +392,47 @@ export default function CellarScreen() {
               ))}
             </View>
 
-            {/* Type d'alcool */}
-            <View style={styles.typeRow}>
-              {CELLAR_TYPES.map((t) => (
-                <Pressable
-                  key={t.key}
-                  style={[styles.typeChip, newType === t.key && styles.typeChipActive]}
-                  onPress={() => setNewType(t.key)}
-                >
-                  <Text style={styles.typeEmoji}>{t.emoji}</Text>
-                  <Text style={[styles.typeText, newType === t.key && styles.typeTextActive]}>{t.label}</Text>
-                </Pressable>
-              ))}
+            {/* Type d'alcool — dropdown */}
+            <View style={styles.dropdownWrapper}>
+              <Pressable
+                style={styles.dropdownTrigger}
+                onPress={() => setTypeDropdownOpen((v) => !v)}
+              >
+                <Text style={styles.dropdownEmoji}>
+                  {CELLAR_TYPES.find((t) => t.key === newType)?.emoji}
+                </Text>
+                <Text style={styles.dropdownValue}>
+                  {CELLAR_TYPES.find((t) => t.key === newType)?.label}
+                </Text>
+                <Ionicons
+                  name={typeDropdownOpen ? 'chevron-up' : 'chevron-down'}
+                  size={16}
+                  color={Colors.textMuted}
+                />
+              </Pressable>
+              {typeDropdownOpen && (
+                <View style={styles.dropdownList}>
+                  {CELLAR_TYPES.map((t, i) => (
+                    <Pressable
+                      key={t.key}
+                      style={[
+                        styles.dropdownItem,
+                        i < CELLAR_TYPES.length - 1 && styles.dropdownItemBorder,
+                        newType === t.key && styles.dropdownItemActive,
+                      ]}
+                      onPress={() => { setNewType(t.key); setTypeDropdownOpen(false); }}
+                    >
+                      <Text style={styles.dropdownEmoji}>{t.emoji}</Text>
+                      <Text style={[styles.dropdownItemText, newType === t.key && styles.dropdownItemTextActive]}>
+                        {t.label}
+                      </Text>
+                      {newType === t.key && (
+                        <Ionicons name="checkmark" size={16} color={Colors.primary} />
+                      )}
+                    </Pressable>
+                  ))}
+                </View>
+              )}
             </View>
 
             <TextInput
@@ -791,16 +822,27 @@ const styles = StyleSheet.create({
     paddingHorizontal: 7, paddingVertical: 2,
   },
   cellarChipCountActive: { backgroundColor: 'rgba(255,255,255,0.25)', color: Colors.background },
-  typeRow: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
-  typeChip: {
-    flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
-    paddingVertical: 10, borderRadius: 12,
-    backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+  dropdownWrapper: { marginBottom: 16 },
+  dropdownTrigger: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: Colors.background, borderRadius: 12,
+    borderWidth: 1, borderColor: Colors.border,
+    paddingHorizontal: 14, paddingVertical: 12,
   },
-  typeChipActive: { backgroundColor: Colors.primary, borderColor: Colors.primary },
-  typeEmoji: { fontSize: 16 },
-  typeText: { fontSize: 13, fontWeight: '600', color: Colors.textMuted },
-  typeTextActive: { color: Colors.background },
+  dropdownEmoji: { fontSize: 18 },
+  dropdownValue: { flex: 1, fontSize: 15, fontWeight: '600', color: Colors.text },
+  dropdownList: {
+    marginTop: 4, borderRadius: 12, borderWidth: 1, borderColor: Colors.border,
+    backgroundColor: Colors.background, overflow: 'hidden',
+  },
+  dropdownItem: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    paddingHorizontal: 14, paddingVertical: 12,
+  },
+  dropdownItemBorder: { borderBottomWidth: 1, borderBottomColor: Colors.border },
+  dropdownItemActive: { backgroundColor: Colors.surfaceLight },
+  dropdownItemText: { flex: 1, fontSize: 15, fontWeight: '500', color: Colors.text },
+  dropdownItemTextActive: { color: Colors.primary, fontWeight: '600' },
   cellarChipNew: {
     flexDirection: 'row', alignItems: 'center', gap: 6,
     paddingHorizontal: 14, height: 44, borderRadius: 22,

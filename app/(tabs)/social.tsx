@@ -124,10 +124,17 @@ export default function SocialScreen() {
   };
 
   const respondToRequest = async (friendshipId: string, accept: boolean) => {
-    await supabase
-      .from('friendships')
-      .update({ status: accept ? 'accepted' : 'declined' })
-      .eq('id', friendshipId);
+    if (accept) {
+      await supabase
+        .from('friendships')
+        .update({ status: 'accepted' })
+        .eq('id', friendshipId);
+    } else {
+      await supabase
+        .from('friendships')
+        .delete()
+        .eq('id', friendshipId);
+    }
     fetchAll();
   };
 

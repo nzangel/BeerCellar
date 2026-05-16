@@ -118,6 +118,8 @@ export default function SocialScreen() {
       Alert.alert('Demande envoyée !', 'Tu as envoyé une demande d\'ami.');
       setSearchQuery('');
       setSearchResults([]);
+    } else if (error.code === '23505') {
+      Alert.alert('Demande déjà envoyée', 'Une demande d\'ami est déjà en attente avec cet utilisateur.');
     } else {
       Alert.alert('Erreur', 'Impossible d\'envoyer la demande.');
     }

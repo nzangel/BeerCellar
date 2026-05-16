@@ -22,7 +22,7 @@ import { Colors } from '../../constants/colors';
 import { useAuth } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 import { Cellar, CellarEntry } from '../../types';
-import { CELLAR_TYPES, CellarType } from '../../lib/cellarTypeLabels';
+import { CELLAR_TYPES, CellarType, getCellarTypeLabels } from '../../lib/cellarTypeLabels';
 
 type SortOption = 'date' | 'rating' | 'name' | 'favorite';
 
@@ -723,7 +723,7 @@ export default function CellarScreen() {
             </Text>
             <Text style={styles.emptyText}>
               {activeEntries.length === 0
-                ? 'Scanne ta première bière ou ajoute-la manuellement.'
+                ? getCellarTypeLabels(activeCellar?.type).emptyScanHint
                 : 'Essaie un autre terme de recherche.'}
             </Text>
             {activeEntries.length === 0 && (
@@ -731,7 +731,7 @@ export default function CellarScreen() {
                 style={styles.emptyBtn}
                 onPress={() => router.push({ pathname: '/beer/add', params: { cellarId: activeCellarId, cellarType: activeCellar?.type ?? 'beer' } })}
               >
-                <Text style={styles.emptyBtnText}>Ajouter une bière</Text>
+                <Text style={styles.emptyBtnText}>{getCellarTypeLabels(activeCellar?.type).addItem}</Text>
               </Pressable>
             )}
           </View>

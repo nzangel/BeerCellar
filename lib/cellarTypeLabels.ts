@@ -9,6 +9,8 @@ export const CELLAR_TYPES: { key: CellarType; label: string; emoji: string }[] =
 
 type CellarLabels = {
   newItem: string;
+  addItem: string;
+  emptyScanHint: string;
   brewery: string;
   breweryPlaceholder: string;
   style: string;
@@ -22,6 +24,8 @@ type CellarLabels = {
 const LABELS: Record<CellarType, CellarLabels> = {
   beer: {
     newItem: 'Nouvelle bière',
+    addItem: 'Ajouter une bière',
+    emptyScanHint: 'Scanne ta première bière ou ajoute-la manuellement.',
     brewery: 'Brasserie',
     breweryPlaceholder: 'Bières de Chimay',
     style: 'Style',
@@ -33,6 +37,8 @@ const LABELS: Record<CellarType, CellarLabels> = {
   },
   wine: {
     newItem: 'Nouveau vin',
+    addItem: 'Ajouter un vin',
+    emptyScanHint: 'Scanne ta première bouteille ou ajoute-la manuellement.',
     brewery: 'Vignoble',
     breweryPlaceholder: 'Château Margaux',
     style: 'Cépage',
@@ -44,6 +50,8 @@ const LABELS: Record<CellarType, CellarLabels> = {
   },
   rum: {
     newItem: 'Nouveau rhum',
+    addItem: 'Ajouter un rhum',
+    emptyScanHint: 'Scanne ta première bouteille ou ajoute-la manuellement.',
     brewery: 'Distillerie',
     breweryPlaceholder: 'Distillerie du Simon',
     style: 'Type',
@@ -55,6 +63,8 @@ const LABELS: Record<CellarType, CellarLabels> = {
   },
   whisky: {
     newItem: 'Nouveau whisky',
+    addItem: 'Ajouter un whisky',
+    emptyScanHint: 'Scanne ta première bouteille ou ajoute-la manuellement.',
     brewery: 'Distillerie',
     breweryPlaceholder: 'Glenfiddich',
     style: 'Type',
